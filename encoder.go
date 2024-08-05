@@ -108,12 +108,7 @@ func NewEncoder(protoFile string) (*Encoder, error) {
 }
 
 func (enc *Encoder) Encode(text string) []Token {
-	// Theoretically SentencePiece performs unicode normalization on the input
-	// text and has some options for adding dummpy whitespace prefixes or
-	// trimming whitespace. However, the model we're working with has a very
-	// simple normalizer that does none of this. These options can be added
-	// in the future if needed.
-	text = replaceSeparator(text)
+	text = normalize(text)
 
 	var symbols []string
 
@@ -188,18 +183,6 @@ func (enc *Encoder) Encode(text string) []Token {
 	}
 
 	return tokens
-}
-
-// TODO: unknown unicode rules are marked as UNKNOWN id, and then
-// SentencePieceProcessor::PopulateSentencePieceText decomposes them
-// to bytes if byte fallback is enabled
-// PieceToId: if found in reserved retunrs that, otherwise pieces, otherwise
-// unknown id
-
-// replaceSeparator replaces spaces by the whitespace separator used by
-// the model.
-func replaceSeparator(text string) string {
-	return strings.ReplaceAll(text, " ", "▁")
 }
 
 // symbolMatch finds the length of the first symbol in text. A symbol is either

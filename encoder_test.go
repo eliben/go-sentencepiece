@@ -1,8 +1,8 @@
 package sentencepiece
 
 import (
-	"fmt"
 	"os"
+	"slices"
 	"testing"
 )
 
@@ -20,12 +20,46 @@ func createEncoder(t *testing.T) *Encoder {
 	return encoder
 }
 
-func TestNew(t *testing.T) {
+func TestEncodeWithText(t *testing.T) {
 	enc := createEncoder(t)
-	// TODO: verify 245 is the right len
-	wantLen := 245
-	if len(enc.userDefined) != wantLen {
-		t.Errorf("got len(userDefined)=%v, want %v", len(enc.userDefined), wantLen)
+
+	var tests = []struct {
+		text       string
+		wantTokens []Token
+	}{
+		{"hi <td> bye",
+			[]Token{
+				{544, "hi"},
+				{235248, "▁"},
+				{176, "<td>"},
+				{44788, "▁bye"},
+			}},
+		{"hiƻ <td>🤨there ⇲bob, สวัสดี",
+			[]Token{
+				{544, "hi"},
+				{415, "<0xC6>"},
+				{404, "<0xBB>"},
+				{235248, "▁"},
+				{176, "<td>"},
+				{241847, "🤨"},
+				{11048, "there"},
+				{235248, "▁"},
+				{248372, "⇲"},
+				{26242, "bob"},
+				{235269, ","},
+				{12515, "▁ส"},
+				{151622, "วัส"},
+				{28890, "ดี"},
+			}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.text, func(t *testing.T) {
+			got := enc.Encode(tt.text)
+			if !slices.Equal(got, tt.wantTokens) {
+				t.Errorf("got  %v\nwant: %v\n", got, tt.wantTokens)
+			}
+		})
 	}
 }
 
@@ -57,16 +91,6 @@ func TestSymbolMatch(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestEncode(t *testing.T) {
-	enc := createEncoder(t)
-	//tk := enc.Encode("hi <td> bye")
-	//fmt.Println(tk)
-
-	tk := enc.Encode("hiƻ <td>🤨there ⇲bob, สวัสดี")
-	fmt.Println(tk)
-
 }
 
 func TestConvertHexValue(t *testing.T) {

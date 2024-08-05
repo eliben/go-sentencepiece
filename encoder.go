@@ -12,7 +12,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-const debugEncode = true
+const debugEncode = false
 
 type Encoder struct {
 	model *ModelProto

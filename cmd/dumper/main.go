@@ -7,7 +7,7 @@ import (
 	"log"
 	"unicode"
 
-	"github.com/eliben/go-sentencepiece/sentencepiece"
+	"github.com/eliben/go-sentencepiece"
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/proto"
 )

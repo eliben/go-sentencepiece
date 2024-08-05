@@ -20,6 +20,38 @@ func createEncoder(t *testing.T) *Encoder {
 	return encoder
 }
 
+func TestEncodeIDs(t *testing.T) {
+	enc := createEncoder(t)
+
+	var tests = []struct {
+		text    string
+		wantIDs []int
+	}{
+		{"hello world", []int{17534, 2134}},
+		{"12345", []int{235274, 235284, 235304, 235310, 235308}},
+		{"  ", []int{139}},
+		{"   ", []int{140}},
+		{"one line\nand another line", []int{785, 2017, 108, 639, 2550, 2017}},
+		{"Bienvenido a este proyecto", []int{176831, 476, 4004, 25431}},
+		{"अस्मिन् परियोजनायां स्वागतम्", []int{236088, 22740, 212361, 18029, 14480, 19900, 146166, 6751, 235563, 56545, 44071, 235550, 26989}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.text, func(t *testing.T) {
+			got := enc.Encode(tt.text)
+
+			var gotIDs []int
+			for _, t := range got {
+				gotIDs = append(gotIDs, t.ID)
+			}
+
+			if !slices.Equal(gotIDs, tt.wantIDs) {
+				t.Errorf("got  %v\nwant: %v\n", gotIDs, tt.wantIDs)
+			}
+		})
+	}
+}
+
 func TestEncodeWithText(t *testing.T) {
 	enc := createEncoder(t)
 

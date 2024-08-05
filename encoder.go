@@ -107,6 +107,7 @@ func NewEncoder(protoFile string) (*Encoder, error) {
 	}, nil
 }
 
+// Encode tokenizes the input text and returns a list of Tokens.
 func (enc *Encoder) Encode(text string) []Token {
 	text = normalize(text)
 

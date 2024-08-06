@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func createEncoder(t *testing.T) *Encoder {
+func createEncoder(t testing.TB) *Encoder {
 	t.Helper()
 	protoFile := os.Getenv("MODELPATH")
 	if protoFile == "" {

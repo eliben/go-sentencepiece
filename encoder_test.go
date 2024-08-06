@@ -34,6 +34,7 @@ func TestEncodeIDs(t *testing.T) {
 		{"one line\nand another line", []int{785, 2017, 108, 639, 2550, 2017}},
 		{"Bienvenido a este proyecto", []int{176831, 476, 4004, 25431}},
 		{"अस्मिन् परियोजनायां स्वागतम्", []int{236088, 22740, 212361, 18029, 14480, 19900, 146166, 6751, 235563, 56545, 44071, 235550, 26989}},
+		{"if allow == true { return x;} else {return x+y;}", []int{648, 2765, 1159, 1382, 612, 2203, 1141, 22505, 1354, 612, 773, 1141, 235340, 235267, 22505}},
 	}
 
 	for _, tt := range tests {
@@ -150,3 +151,5 @@ func TestConvertHexValue(t *testing.T) {
 		})
 	}
 }
+
+// TODO: add benchmark

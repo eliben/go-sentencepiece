@@ -15,6 +15,7 @@ import (
 func main() {
 	fDumpAll := flag.Bool("dumpall", false, "dump entire model proto")
 	fFindUni := flag.Bool("finduni", false, "find unicode runes not in pieces")
+	fEncodeFile := flag.String("encodefile", "", "file name to open and encode")
 	flag.Parse()
 
 	b, err := ioutil.ReadFile(flag.Args()[0])
@@ -42,6 +43,21 @@ func main() {
 					fmt.Printf("not in pieces: %U %q\n", r, string(r))
 				}
 			}
+		}
+	} else if *fEncodeFile != "" {
+		enc, err := sentencepiece.NewEncoder(flag.Args()[0])
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		b, err := ioutil.ReadFile(*fEncodeFile)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		tokens := enc.Encode(string(b))
+		for _, t := range tokens {
+			fmt.Println(t.ID)
 		}
 	}
 }

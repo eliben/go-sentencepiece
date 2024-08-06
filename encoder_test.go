@@ -10,7 +10,7 @@ func createEncoder(t testing.TB) *Encoder {
 	t.Helper()
 	protoFile := os.Getenv("MODELPATH")
 	if protoFile == "" {
-		t.Skip("Need MODELPATH set to run tests")
+		t.Fatal("Need MODELPATH set to run tests")
 	}
 
 	encoder, err := NewEncoder(protoFile)
@@ -156,5 +156,3 @@ func TestConvertHexValue(t *testing.T) {
 		})
 	}
 }
-
-// TODO: add benchmark

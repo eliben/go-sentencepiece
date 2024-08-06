@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"os"
 	"unicode"
 
 	"github.com/eliben/go-sentencepiece"
@@ -18,7 +19,12 @@ func main() {
 	fEncodeFile := flag.String("encodefile", "", "file name to open and encode")
 	flag.Parse()
 
-	b, err := ioutil.ReadFile(flag.Args()[0])
+	modelPath := os.Getenv("MODELPATH")
+	if modelPath == "" {
+		log.Fatal("Need MODELPATH env var to run")
+	}
+
+	b, err := ioutil.ReadFile(modelPath)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -45,7 +51,7 @@ func main() {
 			}
 		}
 	} else if *fEncodeFile != "" {
-		enc, err := sentencepiece.NewEncoder(flag.Args()[0])
+		enc, err := sentencepiece.NewEncoder(modelPath)
 		if err != nil {
 			log.Fatal(err)
 		}

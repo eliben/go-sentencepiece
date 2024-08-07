@@ -1,3 +1,8 @@
+# Uses the sentencepiece package to tokenize the file provided as a command-line
+# argument; emits all token IDs to stdout, one per line.
+#
+# Requires the MODELPATH env var to be set to the binary proto describing
+# the tokenizer model.
 import sentencepiece as spm
 import os, sys
 

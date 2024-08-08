@@ -18,8 +18,13 @@ Gemma uses.
 
 ## Tokenizer configuration
 
-The configuration file for the tokenizer describes a trained tokenizer
-model. It is not part of this repository. Please fetch it from the
+The configuration file for the tokenizer is a protobuf (structured
+data, serialized in the [protocol buffer format](https://protobuf.dev/))
+that describes a trained tokenizer model; it includes
+the complete learned vocabulary used for tokenization, as well as
+other configuration information.
+
+It is not part of this repository. Please fetch it from the
 [official Gemma implementation repository](https://github.com/google/gemma_pytorch/tree/main/tokenizer).
 The `NewEncoder` constructor will expect a local path to this file.
 

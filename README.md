@@ -1,5 +1,7 @@
 # go-sentencepiece
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/eliben/go-sentencepiece.svg)](https://pkg.go.dev/github.com/eliben/go-sentencepiece)
+
 This is a pure Go implementation of encoding text with
 the [SentencePiece tokenizer](https://github.com/google/sentencepiece).
 

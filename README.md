@@ -16,6 +16,19 @@ tokenizer is used for Google's proprietary Gemini family of models).
 Specifically, it only implements BPE tokenization since this is what
 Gemma uses.
 
+## Current status
+
+The initial version of `go-sentencepiece` aims to achieve correctness,
+with the original [SentencePiece](https://github.com/google/sentencepiece)
+(accessed through its [Python bindings](https://pypi.org/project/sentencepiece/))
+for reference. `go-sentencepiece` is tested to produce an identical sequence
+of tokens for a range for textual files.
+
+No effort has been spent on optimization yet; `go-sentencepiece` uses a
+naive quadratic algorithm for BPE tokenization, and will run slowly for
+large inputs. Optimization is being worked on now - expect much better
+performance in the next version.
+
 ## Tokenizer configuration
 
 The configuration file for the tokenizer is a protobuf (structured

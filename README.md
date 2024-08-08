@@ -23,14 +23,17 @@ The `NewEncoder` constructor will expect a local path to this file.
 
 ## Developing
 
-All tests require the `MODELPATH` env var to point to a local
-copy of the tokenizer configuration file.
-
-The `sentencepiece_model.proto` file is vendored from
-https://github.com/google/sentencepiece
+A protobuf is used to configure the tokenizer. The structure of the
+protobuf is described by the `sentencepiece_model.proto` file, which
+is vendored from https://github.com/google/sentencepiece
 
 To re-generate the `*.pb.go` file from it, run:
 
 ```
 $ protoc --go_out=. sentencepiece_model.proto
 ```
+
+The configuration protobuf itself is obtained as described in the
+[Tokenizer configuration](#tokenizer-configuration) section. All
+tests require the `MODELPATH` env var to point to a local
+copy of the tokenizer configuration file.

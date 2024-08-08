@@ -207,7 +207,6 @@ func (enc *Encoder) Encode(text string) []Token {
 
 		// Make sure this candidate is not out of date. If one of its parts was
 		// already merged with another symbol, just skip this candidate.
-		// TODO: do I really need the len == 0 here?
 		if len(leftSymbol.symbol) == 0 || len(rightSymbol.symbol) == 0 ||
 			len(leftSymbol.symbol)+len(rightSymbol.symbol) != candidate.length {
 			continue
@@ -225,13 +224,12 @@ func (enc *Encoder) Encode(text string) []Token {
 		}
 		symList[candidate.right].symbol = ""
 
-		debugShowSymList(fmt.Sprintf("merged %d and %d", candidate.left, candidate.right))
-
 		suggestNewMergePair(leftSymbol.prev, candidate.left)
 		suggestNewMergePair(candidate.left, rightSymbol.next)
 	}
 
-	// TODO: document
+	// Collect the final list of tokens together from the remaining elements
+	// of symList.
 	tokens := make([]Token, 0, len(symList))
 	for i := 0; i >= 0; i = symList[i].next {
 		symbol := symList[i].symbol

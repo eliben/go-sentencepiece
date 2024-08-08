@@ -8,7 +8,7 @@ import (
 )
 
 func BenchmarkEncoder(b *testing.B) {
-	buf, err := ioutil.ReadFile(filepath.Join("test", "pg7193.txt"))
+	buf, err := ioutil.ReadFile(filepath.Join("test", "pg7193_english.txt"))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -23,4 +23,6 @@ func BenchmarkEncoder(b *testing.B) {
 		total += len(toks)
 	}
 	runtime.KeepAlive(total)
+
+	b.ReportMetric(float64(total)/float64(b.Elapsed().Seconds()), "tokens/sec")
 }

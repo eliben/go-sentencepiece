@@ -110,22 +110,23 @@ func NewEncoder(protoFile string) (*Encoder, error) {
 func (enc *Encoder) Encode(text string) []Token {
 	text = normalize(text)
 
-	// We begin by having each token a single Unicode character (or a user-defined
-	// string), and will iteratively merge them into larger and larger symbols
-	// until we have the final list of tokens.
+	// We begin by having each symbol a single Unicode character (or a
+	// user-defined string), and will iteratively merge them into larger and
+	// larger symbols until we have the final list of tokens.
 	// Since this list of symbols changes a lot, we represent it as a
 	// doubly-linked list in the symList slice. Each element in this slice has
 	// prev/next links to the next "live" symbol in the list; noMerge means this
 	// is a user-defined symbol we're not allowed to merge with neighbors.
 	// After the algorithm is finished, many elements in symList will be "dead"
 	// (unreachable by next/prev links from the first element).
+	// This representation is inspired by the implementation of bpe::Model
+	// in the SentencePiece C++ library.
 
 	type symListElem struct {
 		prev, next int
 		noMerge    bool
 		symbol     string
 	}
-
 	symList := make([]symListElem, 0, len(text))
 
 	for {
@@ -134,13 +135,13 @@ func (enc *Encoder) Encode(text string) []Token {
 
 		// Append a list element for this symbol; note that this element will be
 		// at index len(symList), so prev/next are set up accordingly.
-		elem := symListElem{
+		sym := symListElem{
 			noMerge: found,
 			symbol:  text[:slen],
 			prev:    len(symList) - 1,
 			next:    len(symList) + 1,
 		}
-		symList = append(symList, elem)
+		symList = append(symList, sym)
 
 		// Advance the text slice to the next symbol; if no more text, we're done.
 		text = text[slen:]
@@ -164,6 +165,11 @@ func (enc *Encoder) Encode(text string) []Token {
 	}
 	debugShowSymList("initial")
 
+	// To avoid repeating work, we manage a priority queue of "merge candidates".
+	// Each candidate has pointers to the symList list for the left and right
+	// symbol in the pair, as well as the combined symbol's score.
+	// The priority of merging is determined by this score, with position as
+	// the tie-breaker (earlier pairs are preferred).
 	type mergeCandidate struct {
 		left, right int
 		length      int
@@ -178,6 +184,9 @@ func (enc *Encoder) Encode(text string) []Token {
 		}
 	})
 
+	// suggestNewMergePair is called to potentially add a new mergeCandidate to
+	// mergeQueue. The candidate is added if it's valid, both its parts are
+	// allowed to merge, and it appears in the vocabulary.
 	suggestNewMergePair := func(left, right int) {
 		if left == -1 || right == -1 || symList[left].noMerge || symList[right].noMerge {
 			return
@@ -207,29 +216,32 @@ func (enc *Encoder) Encode(text string) []Token {
 
 		// Make sure this candidate is not out of date. If one of its parts was
 		// already merged with another symbol, just skip this candidate.
-		if len(leftSymbol.symbol) == 0 || len(rightSymbol.symbol) == 0 ||
+		if len(leftSymbol.symbol) == 0 ||
+			len(rightSymbol.symbol) == 0 ||
 			len(leftSymbol.symbol)+len(rightSymbol.symbol) != candidate.length {
 			continue
 		}
 
 		// Do the merge:
 		// 1. Merge the concatenation of leftSymbol and rightSymbol into leftSymbol
-		// 2. Update prev/next pointers
-		// 3. Add merge suggestions for the newly merged symbol with its neighbors
 		symList[candidate.left].symbol = leftSymbol.symbol + rightSymbol.symbol
 
+		// 2. Update prev/next pointers
 		symList[candidate.left].next = rightSymbol.next
 		if rightSymbol.next >= 0 {
 			symList[rightSymbol.next].prev = candidate.left
 		}
+
+		// 3. Mark the right element in the pair as outdated (it's been merged
+		//    into the left one).
 		symList[candidate.right].symbol = ""
 
+		// 4. Add merge suggestions for the newly merged symbol with its neighbors
 		suggestNewMergePair(leftSymbol.prev, candidate.left)
 		suggestNewMergePair(candidate.left, rightSymbol.next)
 	}
 
-	// Collect the final list of tokens together from the remaining elements
-	// of symList.
+	// Collect the final list of tokens from the remaining elements of symList.
 	tokens := make([]Token, 0, len(symList))
 	for i := 0; i >= 0; i = symList[i].next {
 		symbol := symList[i].symbol

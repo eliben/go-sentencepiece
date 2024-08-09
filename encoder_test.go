@@ -156,10 +156,3 @@ func TestConvertHexValue(t *testing.T) {
 		})
 	}
 }
-
-//func TestXX(t *testing.T) {
-//enc := createEncoder(t)
-//toks := enc.Encode("hiƻ <td>🤨there ⇲bob, สวัสดี")
-//fmt.Println(toks)
-
-//}

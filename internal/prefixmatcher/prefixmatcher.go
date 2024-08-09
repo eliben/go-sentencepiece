@@ -1,5 +1,9 @@
 package prefixmatcher
 
+import (
+	"unicode/utf8"
+)
+
 type PrefixMatcher struct {
 	root *trieNode
 }
@@ -30,9 +34,8 @@ func (pm *PrefixMatcher) FindPrefixLen(text string) int {
 			return maxLen
 		}
 		if child.final {
-			maxLen = i + 1
+			maxLen = i + utf8.RuneLen(r)
 		}
-
 		node = child
 	}
 

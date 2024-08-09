@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/eliben/go-sentencepiece/internal/prefixmatcher"
 	"github.com/eliben/go-sentencepiece/internal/priorityqueue"
 	"google.golang.org/protobuf/proto"
 )
@@ -22,9 +23,9 @@ type Encoder struct {
 	// unknownId is the token identifier of the UNKNOWN piece
 	unknownId int
 
-	// userDefined is a set of symbols that are of "user-defined" type in the
-	// model proto.
-	userDefined map[string]struct{}
+	// userDefinedMatcher is a prefix matcher for symbols that are of
+	// "user-defined" type in the model proto.
+	userDefinedMatcher *prefixmatcher.PrefixMatcher
 
 	// byteTokens is a cache of byte values and the tokens they represent
 	byteTokens map[byte]Token
@@ -97,12 +98,12 @@ func NewEncoder(protoFile string) (*Encoder, error) {
 	}
 
 	return &Encoder{
-		model:       &mp,
-		userDefined: userDefined,
-		byteTokens:  byteTokens,
-		unknownId:   unkId,
-		pieces:      pieces,
-		reserved:    reserved,
+		model:              &mp,
+		userDefinedMatcher: prefixmatcher.NewFromSet(userDefined),
+		byteTokens:         byteTokens,
+		unknownId:          unkId,
+		pieces:             pieces,
+		reserved:           reserved,
 	}, nil
 }
 
@@ -265,20 +266,11 @@ func (enc *Encoder) Encode(text string) []Token {
 // a user-defined symbol from the proto or a single rune. The second return
 // value is true iff a user-defined symbol was matched.
 func (enc *Encoder) symbolMatch(text string) (int, bool) {
-	maxLen := 0
-
-	// TODO: optimize this using a trie
-	for us := range enc.userDefined {
-		if strings.HasPrefix(text, us) {
-			if len(us) > maxLen {
-				maxLen = len(us)
-			}
-		}
-	}
-
-	if maxLen > 0 {
-		return maxLen, true
+	prefixLen := enc.userDefinedMatcher.FindPrefixLen(text)
+	if prefixLen > 0 {
+		return prefixLen, true
 	} else {
+		// Not found a user-defined prefix; get the length of next rune.
 		_, rlen := utf8.DecodeRuneInString(text)
 		return rlen, false
 	}

@@ -23,8 +23,15 @@ func TestSmallVocab(t *testing.T) {
 		"hamat":  struct{}{},
 		"hamela": struct{}{},
 		"世界":     struct{}{},
+
+		"▁▁":     struct{}{},
+		"▁▁▁":    struct{}{},
+		"▁▁▁▁":   struct{}{},
+		"▁▁▁▁▁":  struct{}{},
+		"▁▁▁▁▁▁": struct{}{},
 	}
 	pm := NewFromSet(vocab)
+	fmt.Println(dumpNode(pm.root, ""))
 
 	var tests = []struct {
 		text    string
@@ -44,10 +51,18 @@ func TestSmallVocab(t *testing.T) {
 		{"ye", 0},
 		{"yefet", 5},
 		{"yefeton", 5},
-		{"世界", 4},
+		{"世界", 6},
 		{"世", 0},
 		{"世p", 0},
-		{"世界foo", 4},
+		{"世界foo", 6},
+		{"▁", 0},
+		{"▁▁", 6},
+		{"▁▁▁", 9},
+		{"▁▁▁▁", 12},
+		{"▁▁▁▁▁", 15},
+		{"▁▁▁▁▁▁", 18},
+		{"▁▁▁▁▁▁▁", 18},
+		{"▁▁▁▁▁▁p", 18},
 	}
 
 	for _, tt := range tests {

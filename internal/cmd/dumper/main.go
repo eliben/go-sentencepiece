@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"github.com/eliben/go-sentencepiece"
+	"github.com/eliben/go-sentencepiece/internal/model"
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/proto"
 )
@@ -29,7 +30,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	var model sentencepiece.ModelProto
+	var model model.ModelProto
 	err = proto.Unmarshal(b, &model)
 	if err != nil {
 		log.Fatal(err)

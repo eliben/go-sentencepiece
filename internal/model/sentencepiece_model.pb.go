@@ -18,7 +18,7 @@
 // 	protoc        v3.14.0
 // source: sentencepiece_model.proto
 
-package sentencepiece
+package model
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"

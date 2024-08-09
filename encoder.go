@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/eliben/go-sentencepiece/internal/model"
 	"github.com/eliben/go-sentencepiece/internal/prefixmatcher"
 	"github.com/eliben/go-sentencepiece/internal/priorityqueue"
 	"google.golang.org/protobuf/proto"
@@ -16,7 +17,7 @@ import (
 const debugEncode = false
 
 type Encoder struct {
-	model *ModelProto
+	model *model.ModelProto
 
 	pieces   map[string]int
 	reserved map[string]int
@@ -50,14 +51,14 @@ func NewEncoder(protoReader io.Reader) (*Encoder, error) {
 		return nil, fmt.Errorf("unable to read protobuf data: %v", err)
 	}
 
-	var mp ModelProto
+	var mp model.ModelProto
 	err = proto.Unmarshal(b, &mp)
 	if err != nil {
 		return nil, fmt.Errorf("unable to unmarshal protobuf: %v", err)
 	}
 
 	tspec := mp.GetTrainerSpec()
-	if tspec.GetModelType() != TrainerSpec_BPE {
+	if tspec.GetModelType() != model.TrainerSpec_BPE {
 		return nil, fmt.Errorf("model type %s not supported", tspec.GetModelType())
 	}
 
@@ -68,9 +69,9 @@ func NewEncoder(protoReader io.Reader) (*Encoder, error) {
 	unkId := -1
 
 	for i, piece := range mp.GetPieces() {
-		isNormalPiece := (piece.GetType() == ModelProto_SentencePiece_NORMAL ||
-			piece.GetType() == ModelProto_SentencePiece_USER_DEFINED ||
-			piece.GetType() == ModelProto_SentencePiece_UNUSED)
+		isNormalPiece := (piece.GetType() == model.ModelProto_SentencePiece_NORMAL ||
+			piece.GetType() == model.ModelProto_SentencePiece_USER_DEFINED ||
+			piece.GetType() == model.ModelProto_SentencePiece_UNUSED)
 
 		if isNormalPiece {
 			pieces[piece.GetPiece()] = i
@@ -78,14 +79,14 @@ func NewEncoder(protoReader io.Reader) (*Encoder, error) {
 			reserved[piece.GetPiece()] = i
 		}
 
-		if piece.GetType() == ModelProto_SentencePiece_USER_DEFINED {
+		if piece.GetType() == model.ModelProto_SentencePiece_USER_DEFINED {
 			userDefined[piece.GetPiece()] = struct{}{}
-		} else if piece.GetType() == ModelProto_SentencePiece_UNKNOWN {
+		} else if piece.GetType() == model.ModelProto_SentencePiece_UNKNOWN {
 			if unkId > 0 {
 				return nil, fmt.Errorf("unk redefined")
 			}
 			unkId = i
-		} else if piece.GetType() == ModelProto_SentencePiece_BYTE {
+		} else if piece.GetType() == model.ModelProto_SentencePiece_BYTE {
 			if !tspec.GetByteFallback() {
 				return nil, fmt.Errorf("byte piece %q is found although `byte_fallback=false`", piece.GetPiece())
 			}

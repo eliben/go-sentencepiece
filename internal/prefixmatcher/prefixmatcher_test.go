@@ -31,7 +31,6 @@ func TestSmallVocab(t *testing.T) {
 		"▁▁▁▁▁▁": struct{}{},
 	}
 	pm := NewFromSet(vocab)
-	fmt.Println(dumpNode(pm.root, ""))
 
 	var tests = []struct {
 		text    string

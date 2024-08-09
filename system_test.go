@@ -46,6 +46,7 @@ func TestVsSentencepiecePython(t *testing.T) {
 			if err != nil {
 				t.Fatalf("while running %v on %v: %v", pyProgramPath, path, err)
 			}
+
 			pyIDs := pyOutToIDs(pyOut)
 
 			// Step 2: use our Encoder to tokenize path into IDs.

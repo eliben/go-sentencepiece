@@ -18,16 +18,12 @@ Gemma uses.
 
 ## Current status
 
-The initial version of `go-sentencepiece` aims to achieve correctness,
-with the original [SentencePiece](https://github.com/google/sentencepiece)
-(accessed through its [Python bindings](https://pypi.org/project/sentencepiece/))
-for reference. `go-sentencepiece` is tested to produce an identical sequence
-of tokens for a range for textual files.
+This package should be ready to use for encoding text into tokens
+using the Gemma tokenizer; it's been reasonably optimized and extensively
+tested vs. the [SentencePiece Python bindings](https://pypi.org/project/sentencepiece/)
+(see `system_test.go` in this repository).
 
-No effort has been spent on optimization yet; `go-sentencepiece` uses a
-naive quadratic algorithm for BPE tokenization, and will run slowly for
-large inputs. Optimization is being worked on now - expect much better
-performance in the next version.
+If you find any problems or discrepancies, please open an issue.
 
 ## Tokenizer configuration
 

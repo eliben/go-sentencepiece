@@ -2,6 +2,7 @@ package sentencepiece
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -31,16 +32,28 @@ type Encoder struct {
 	byteTokens map[byte]Token
 }
 
-func NewEncoder(protoFile string) (*Encoder, error) {
-	b, err := os.ReadFile(protoFile)
+// NewEncoderFromPath creates a new Encoder from a file path to the protobuf
+// data.
+func NewEncoderFromPath(protoFile string) (*Encoder, error) {
+	f, err := os.Open(protoFile)
 	if err != nil {
 		return nil, fmt.Errorf("unable to read %q: %v", protoFile, err)
+	}
+	defer f.Close()
+	return NewEncoder(f)
+}
+
+// NewEncoder creates a new Encoder from a reader with the protobuf data.
+func NewEncoder(protoReader io.Reader) (*Encoder, error) {
+	b, err := io.ReadAll(protoReader)
+	if err != nil {
+		return nil, fmt.Errorf("unable to read protobuf data: %v", err)
 	}
 
 	var mp ModelProto
 	err = proto.Unmarshal(b, &mp)
 	if err != nil {
-		return nil, fmt.Errorf("unable to unmarshal %q: %v", protoFile, err)
+		return nil, fmt.Errorf("unable to unmarshal protobuf: %v", err)
 	}
 
 	tspec := mp.GetTrainerSpec()

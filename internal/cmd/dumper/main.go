@@ -51,7 +51,7 @@ func main() {
 			}
 		}
 	} else if *fEncodeFile != "" {
-		enc, err := sentencepiece.NewEncoder(modelPath)
+		enc, err := sentencepiece.NewEncoderFromPath(modelPath)
 		if err != nil {
 			log.Fatal(err)
 		}

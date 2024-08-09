@@ -15,7 +15,7 @@ func ExampleEncode() {
 		return
 	}
 
-	enc, err := sentencepiece.NewEncoder(protoFile)
+	enc, err := sentencepiece.NewEncoderFromPath(protoFile)
 	if err != nil {
 		log.Fatal(err)
 	}

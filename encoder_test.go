@@ -13,7 +13,7 @@ func createEncoder(t testing.TB) *Encoder {
 		t.Fatal("Need MODELPATH env var to run tests")
 	}
 
-	encoder, err := NewEncoder(protoFile)
+	encoder, err := NewEncoderFromPath(protoFile)
 	if err != nil {
 		t.Error(err)
 	}

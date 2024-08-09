@@ -35,18 +35,19 @@ other configuration information.
 
 It is not part of this repository. Please fetch it from the
 [official Gemma implementation repository](https://github.com/google/gemma_pytorch/tree/main/tokenizer).
-The `NewEncoder` constructor will expect a local path to this file.
+`NewEncoder*` constructors will expect to read this file.
 
 ## Developing
 
 A protobuf is used to configure the tokenizer. The structure of the
-protobuf is described by the `sentencepiece_model.proto` file, which
-is vendored from https://github.com/google/sentencepiece
+protobuf is described by the `internal/model/sentencepiece_model.proto` file,
+which is vendored from https://github.com/google/sentencepiece
 
-To re-generate the `*.pb.go` file from it, run:
+To re-generate the `*.pb.go` file from it:
 
 ```
-$ protoc --go_out=. sentencepiece_model.proto
+$ cd internal/model
+$ ./gen.sh
 ```
 
 The configuration protobuf itself is obtained as described in the

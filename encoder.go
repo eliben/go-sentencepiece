@@ -45,6 +45,7 @@ func NewEncoderFromPath(protoFile string) (*Encoder, error) {
 }
 
 // NewEncoder creates a new Encoder from a reader with the protobuf data.
+// An Encoder converts input text into a sequence of tokens LLMs use.
 func NewEncoder(protoReader io.Reader) (*Encoder, error) {
 	b, err := io.ReadAll(protoReader)
 	if err != nil {

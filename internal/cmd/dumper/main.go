@@ -1,5 +1,8 @@
 package main
 
+// Command dumper is a debugging utility for internal use. It helps explore
+// the model proto and compare results with other tools.
+
 import (
 	"flag"
 	"fmt"

@@ -4,6 +4,7 @@ import (
 	"unicode/utf8"
 )
 
+// PrefixMatcher helps find longest prefixes. See [FindPrefixLen].
 type PrefixMatcher struct {
 	root *trieNode
 }
@@ -13,6 +14,8 @@ type trieNode struct {
 	final    bool
 }
 
+// NewFromSet creates a new [PrefixMatcher] from a set of strings tha represent
+// the vocabulary.
 func NewFromSet(vocab map[string]struct{}) *PrefixMatcher {
 	pm := &PrefixMatcher{root: newNode()}
 	for word := range vocab {

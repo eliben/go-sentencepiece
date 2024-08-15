@@ -17,18 +17,18 @@ func dumpNode(n *trieNode, prefix string) string {
 }
 
 func TestSmallVocab(t *testing.T) {
-	vocab := map[string]struct{}{
-		"ham":    {},
-		"yefet":  {},
-		"hamat":  {},
-		"hamela": {},
-		"世界":     {},
+	vocab := map[string]bool{
+		"ham":    true,
+		"yefet":  true,
+		"hamat":  true,
+		"hamela": true,
+		"世界":     true,
 
-		"▁▁":     {},
-		"▁▁▁":    {},
-		"▁▁▁▁":   {},
-		"▁▁▁▁▁":  {},
-		"▁▁▁▁▁▁": {},
+		"▁▁":     true,
+		"▁▁▁":    true,
+		"▁▁▁▁":   true,
+		"▁▁▁▁▁":  true,
+		"▁▁▁▁▁▁": true,
 	}
 	pm := NewFromSet(vocab)
 
@@ -75,13 +75,13 @@ func TestSmallVocab(t *testing.T) {
 }
 
 func TestSingleAndDoubleLetter(t *testing.T) {
-	vocab := make(map[string]struct{})
+	vocab := make(map[string]bool)
 
 	for r1 := 'a'; r1 <= 'z'; r1++ {
-		vocab[string(r1)] = struct{}{}
+		vocab[string(r1)] = true
 
 		for r2 := 'a'; r2 <= 'z'; r2++ {
-			vocab[string(r1)+string(r2)] = struct{}{}
+			vocab[string(r1)+string(r2)] = true
 		}
 	}
 

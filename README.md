@@ -61,3 +61,11 @@ The configuration protobuf itself is obtained as described in the
 [Tokenizer configuration](#tokenizer-configuration) section. All
 tests require the `MODELPATH` env var to point to a local
 copy of the tokenizer configuration file.
+
+## Online demo
+
+To see an in-browser demo of this tokenizer in action, visit
+https://eliben.github.io/go-sentencepiece/
+
+The Go code is compiled to WebAssembly and loaded from a small
+JS program to allow interactive encoding of text.

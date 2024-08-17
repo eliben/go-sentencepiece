@@ -34,8 +34,8 @@ type Encoder struct {
 	// "user-defined" type in the model proto.
 	userDefinedMatcher *prefixmatcher.PrefixMatcher
 
-	// byteTokens is a cache of byte values and the tokens they represent
-	byteTokens map[byte]Token
+	// byte2Token is a cache of byte values and the tokens they represent
+	byte2Token map[byte]Token
 
 	// idToByte maps IDs to byte values they represent
 	idToByte map[int]byte
@@ -78,7 +78,7 @@ func NewEncoder(protoReader io.Reader) (*Encoder, error) {
 	userDefined := make(map[string]bool)
 	pieces := make(map[string]int)
 	reserved := make(map[string]int)
-	byteTokens := make(map[byte]Token)
+	byte2Token := make(map[byte]Token)
 	idToByte := make(map[int]byte)
 	unkID := -1
 
@@ -106,7 +106,7 @@ func NewEncoder(protoReader io.Reader) (*Encoder, error) {
 			}
 			bv := convertHexValue(piece.GetPiece())
 			if bv >= 0 && bv < 256 {
-				byteTokens[byte(bv)] = Token{ID: i, Text: piece.GetPiece()}
+				byte2Token[byte(bv)] = Token{ID: i, Text: piece.GetPiece()}
 				idToByte[i] = byte(bv)
 			}
 		}
@@ -120,7 +120,7 @@ func NewEncoder(protoReader io.Reader) (*Encoder, error) {
 	// values were found.
 	if tspec.GetByteFallback() {
 		for i := 0; i < 256; i++ {
-			if _, found := byteTokens[byte(i)]; !found {
+			if _, found := byte2Token[byte(i)]; !found {
 				return nil, fmt.Errorf("byte value 0x%02X not found", i)
 			}
 		}
@@ -129,7 +129,7 @@ func NewEncoder(protoReader io.Reader) (*Encoder, error) {
 	return &Encoder{
 		model:              &mp,
 		userDefinedMatcher: prefixmatcher.NewFromSet(userDefined),
-		byteTokens:         byteTokens,
+		byte2Token:         byte2Token,
 		idToByte:           idToByte,
 		unknownID:          unkID,
 		pieces:             pieces,
@@ -281,7 +281,7 @@ func (enc *Encoder) Encode(text string) []Token {
 			// Decompose this symbol into bytes, and report each byte as a separate
 			// token.
 			for i := 0; i < len(symbol); i++ {
-				tokens = append(tokens, enc.byteTokens[symbol[i]])
+				tokens = append(tokens, enc.byte2Token[symbol[i]])
 			}
 		} else {
 			tokens = append(tokens, Token{ID: id, Text: symbol})

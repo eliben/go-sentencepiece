@@ -14,12 +14,12 @@ func BenchmarkEncoder(b *testing.B) {
 	}
 	sbuf := string(buf)
 
-	enc := createEncoder(b)
+	proc := createProcessor(b)
 	b.ResetTimer()
 	total := 0
 
 	for i := 0; i < b.N; i++ {
-		toks := enc.Encode(sbuf)
+		toks := proc.Encode(sbuf)
 		total += len(toks)
 	}
 	runtime.KeepAlive(total)
@@ -34,14 +34,14 @@ func BenchmarkDecoder(b *testing.B) {
 	}
 	sbuf := string(buf)
 
-	enc := createEncoder(b)
-	toks := enc.Encode(sbuf)
+	proc := createProcessor(b)
+	toks := proc.Encode(sbuf)
 
 	b.ResetTimer()
 	total := 0
 
 	for i := 0; i < b.N; i++ {
-		t := enc.DecodeTokens(toks)
+		t := proc.DecodeTokens(toks)
 		total += len(t)
 	}
 	runtime.KeepAlive(total)

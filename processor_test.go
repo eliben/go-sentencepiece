@@ -7,22 +7,22 @@ import (
 	"testing"
 )
 
-func createEncoder(t testing.TB) *Encoder {
+func createProcessor(t testing.TB) *Processor {
 	t.Helper()
 	protoFile := os.Getenv("MODELPATH")
 	if protoFile == "" {
 		t.Fatal("Need MODELPATH env var to run tests")
 	}
 
-	encoder, err := NewEncoderFromPath(protoFile)
+	proc, err := NewProcessorFromPath(protoFile)
 	if err != nil {
 		t.Error(err)
 	}
-	return encoder
+	return proc
 }
 
 func TestEncodeIDs(t *testing.T) {
-	enc := createEncoder(t)
+	proc := createProcessor(t)
 
 	var tests = []struct {
 		text    string
@@ -45,7 +45,7 @@ func TestEncodeIDs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.text, func(t *testing.T) {
-			got := enc.Encode(tt.text)
+			got := proc.Encode(tt.text)
 
 			var gotIDs []int
 			for _, t := range got {
@@ -59,8 +59,8 @@ func TestEncodeIDs(t *testing.T) {
 	}
 }
 
-func TestEncodeWithText(t *testing.T) {
-	enc := createEncoder(t)
+func TestProcessorWithText(t *testing.T) {
+	proc := createProcessor(t)
 
 	var tests = []struct {
 		text       string
@@ -94,7 +94,7 @@ func TestEncodeWithText(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.text, func(t *testing.T) {
-			got := enc.Encode(tt.text)
+			got := proc.Encode(tt.text)
 			if !slices.Equal(got, tt.wantTokens) {
 				t.Errorf("got  %v\nwant: %v\n", got, tt.wantTokens)
 			}
@@ -103,7 +103,7 @@ func TestEncodeWithText(t *testing.T) {
 }
 
 func TestSymbolMatch(t *testing.T) {
-	enc := createEncoder(t)
+	proc := createProcessor(t)
 
 	var tests = []struct {
 		text      string
@@ -124,7 +124,7 @@ func TestSymbolMatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.text, func(t *testing.T) {
-			gotLen, gotFound := enc.symbolMatch(tt.text)
+			gotLen, gotFound := proc.symbolMatch(tt.text)
 			if gotLen != tt.wantLen || gotFound != tt.wantFound {
 				t.Errorf("got (%v, %v), want (%v, %v)", gotLen, gotFound, tt.wantLen, tt.wantFound)
 			}
@@ -159,7 +159,7 @@ func TestConvertHexValue(t *testing.T) {
 }
 
 func TestDecoder(t *testing.T) {
-	enc := createEncoder(t)
+	proc := createProcessor(t)
 
 	var tests = []struct {
 		IDs      []int
@@ -192,7 +192,7 @@ func TestDecoder(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%v", tt.IDs), func(t *testing.T) {
-			got := enc.Decode(tt.IDs)
+			got := proc.Decode(tt.IDs)
 			if got != tt.wantText {
 				t.Errorf("got %q\nwant %q\n", got, tt.wantText)
 			}
@@ -201,14 +201,14 @@ func TestDecoder(t *testing.T) {
 }
 
 func TestDecodeTokens(t *testing.T) {
-	enc := createEncoder(t)
+	proc := createProcessor(t)
 	wantText := "hello   world"
 	tokens := []Token{
 		Token{17534, "xxx"},
 		Token{139, "xxx"},
 		Token{2134, "xxx"}}
 
-	text := enc.DecodeTokens(tokens)
+	text := proc.DecodeTokens(tokens)
 	if text != wantText {
 		t.Errorf("got %q, want %q", text, wantText)
 	}

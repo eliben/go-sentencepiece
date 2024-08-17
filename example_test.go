@@ -15,15 +15,17 @@ func ExampleEncode() {
 		return
 	}
 
-	enc, err := sentencepiece.NewEncoderFromPath(protoFile)
+	proc, err := sentencepiece.NewProcessorFromPath(protoFile)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	text := "Encoding produces tokens that LLMs can learn and understand"
-	tokens := enc.Encode(text)
+	tokens := proc.Encode(text)
 
 	for _, token := range tokens {
 		fmt.Println(token)
 	}
 }
+
+// TODO: example for decode

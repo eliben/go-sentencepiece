@@ -16,12 +16,15 @@ import (
 
 const debugEncode = false
 
-// Encoder represents a SentencePiece encoder (tokenizer).
-// An Encoder converts input text into a sequence of tokens LLMs use.
+// Processor represents a SentencePiece processor (tokenizer).
+// A Processor converts input text into a sequence of tokens LLMs use, and back.
 // The mapping between token IDs and the text they represent is read from the
 // model proto (provided to the constructor); it's the same between all calls
 // to the Encode method.
-type Encoder struct {
+//
+// The term "processor" comes from the original C++ SentencePiece library and
+// its Python bindings.
+type Processor struct {
 	model *model.ModelProto
 
 	pieces   map[string]int
@@ -41,19 +44,19 @@ type Encoder struct {
 	idToByte map[int]byte
 }
 
-// NewEncoderFromPath creates a new Encoder from a file path to the protobuf
+// NewProcessorFromPath creates a new Processor from a file path to the protobuf
 // data.
-func NewEncoderFromPath(protoFile string) (*Encoder, error) {
+func NewProcessorFromPath(protoFile string) (*Processor, error) {
 	f, err := os.Open(protoFile)
 	if err != nil {
 		return nil, fmt.Errorf("unable to read %q: %v", protoFile, err)
 	}
 	defer f.Close()
-	return NewEncoder(f)
+	return NewProcessor(f)
 }
 
-// NewEncoder creates a new Encoder from a reader with the protobuf data.
-func NewEncoder(protoReader io.Reader) (*Encoder, error) {
+// NewProcessor creates a new Processor from a reader with the protobuf data.
+func NewProcessor(protoReader io.Reader) (*Processor, error) {
 	b, err := io.ReadAll(protoReader)
 	if err != nil {
 		return nil, fmt.Errorf("unable to read protobuf data: %v", err)
@@ -126,7 +129,7 @@ func NewEncoder(protoReader io.Reader) (*Encoder, error) {
 		}
 	}
 
-	return &Encoder{
+	return &Processor{
 		model:              &mp,
 		userDefinedMatcher: prefixmatcher.NewFromSet(userDefined),
 		byte2Token:         byte2Token,
@@ -138,7 +141,7 @@ func NewEncoder(protoReader io.Reader) (*Encoder, error) {
 }
 
 // Encode tokenizes the input text and returns a list of Tokens.
-func (enc *Encoder) Encode(text string) []Token {
+func (proc *Processor) Encode(text string) []Token {
 	text = normalize(text)
 
 	// We begin by having each symbol a single Unicode character (or a
@@ -162,7 +165,7 @@ func (enc *Encoder) Encode(text string) []Token {
 
 	for {
 		// Match the next symbol in text
-		slen, found := enc.symbolMatch(text)
+		slen, found := proc.symbolMatch(text)
 
 		// Append a list element for this symbol; note that this element will be
 		// at index len(symList), so prev/next are set up accordingly.
@@ -223,12 +226,12 @@ func (enc *Encoder) Encode(text string) []Token {
 		}
 
 		mergedSymbol := symList[left].symbol + symList[right].symbol
-		if id, found := enc.pieces[mergedSymbol]; found {
+		if id, found := proc.pieces[mergedSymbol]; found {
 			mergeQueue.Insert(mergeCandidate{
 				left:   left,
 				right:  right,
 				length: len(mergedSymbol),
-				score:  enc.model.GetPieces()[id].GetScore(),
+				score:  proc.model.GetPieces()[id].GetScore(),
 			})
 		}
 	}
@@ -275,13 +278,13 @@ func (enc *Encoder) Encode(text string) []Token {
 	tokens := make([]Token, 0, len(symList))
 	for i := 0; i >= 0; i = symList[i].next {
 		symbol := symList[i].symbol
-		id := enc.symbolToID(symbol)
+		id := proc.symbolToID(symbol)
 
-		if id == enc.unknownID && enc.model.GetTrainerSpec().GetByteFallback() {
+		if id == proc.unknownID && proc.model.GetTrainerSpec().GetByteFallback() {
 			// Decompose this symbol into bytes, and report each byte as a separate
 			// token.
 			for i := 0; i < len(symbol); i++ {
-				tokens = append(tokens, enc.byte2Token[symbol[i]])
+				tokens = append(tokens, proc.byte2Token[symbol[i]])
 			}
 		} else {
 			tokens = append(tokens, Token{ID: id, Text: symbol})
@@ -294,8 +297,8 @@ func (enc *Encoder) Encode(text string) []Token {
 // symbolMatch finds the length of the first symbol in text. A symbol is either
 // a user-defined symbol from the proto or a single rune. The second return
 // value is true iff a user-defined symbol was matched.
-func (enc *Encoder) symbolMatch(text string) (int, bool) {
-	prefixLen := enc.userDefinedMatcher.FindPrefixLen(text)
+func (proc *Processor) symbolMatch(text string) (int, bool) {
+	prefixLen := proc.userDefinedMatcher.FindPrefixLen(text)
 	if prefixLen > 0 {
 		return prefixLen, true
 	}
@@ -305,15 +308,15 @@ func (enc *Encoder) symbolMatch(text string) (int, bool) {
 }
 
 // symbolToID finds the right ID for the given textual symbol, or returns
-// enc.unknownID if the symbol is unknown.
-func (enc *Encoder) symbolToID(symbol string) int {
-	if id, found := enc.reserved[symbol]; found {
+// proc.unknownID if the symbol is unknown.
+func (proc *Processor) symbolToID(symbol string) int {
+	if id, found := proc.reserved[symbol]; found {
 		return id
 	}
-	if id, found := enc.pieces[symbol]; found {
+	if id, found := proc.pieces[symbol]; found {
 		return id
 	}
-	return enc.unknownID
+	return proc.unknownID
 }
 
 // convertHexValue converts strings of the form "<0xXY>" to the (unsigned)
@@ -328,15 +331,15 @@ func convertHexValue(bv string) int {
 	return int(n)
 }
 
-// Decode translates a list of IDs produced by the encoder back into the string
+// Decode translates a list of IDs produced by [Encode] back into the string
 // it represents.
-func (enc *Encoder) Decode(ids []int) string {
+func (proc *Processor) Decode(ids []int) string {
 	var sb strings.Builder
 
 	for i := 0; i < len(ids); {
 		// Find a run of IDs that represent single bytes starting at i.
 		nextNonByte := i
-		for nextNonByte < len(ids) && enc.isByteID(ids[nextNonByte]) {
+		for nextNonByte < len(ids) && proc.isByteID(ids[nextNonByte]) {
 			nextNonByte++
 		}
 		numBytes := nextNonByte - i
@@ -345,7 +348,7 @@ func (enc *Encoder) Decode(ids []int) string {
 		if numBytes > 0 {
 			buf := make([]byte, 0, numBytes)
 			for bi := i; bi < nextNonByte; bi++ {
-				buf = append(buf, enc.idToByte[ids[bi]])
+				buf = append(buf, proc.idToByte[ids[bi]])
 			}
 
 			for len(buf) > 0 {
@@ -363,13 +366,13 @@ func (enc *Encoder) Decode(ids []int) string {
 		}
 		// Here nextNonByte is the index of an ID that's not a single byte.
 		id := ids[nextNonByte]
-		if enc.isControlID(id) {
+		if proc.isControlID(id) {
 			// Don't emit anything for control IDs
-		} else if id == enc.unknownID {
+		} else if id == proc.unknownID {
 			// Special "unk_surface" string for unknown IDs
-			sb.WriteString(enc.model.GetTrainerSpec().GetUnkSurface())
+			sb.WriteString(proc.model.GetTrainerSpec().GetUnkSurface())
 		} else {
-			piece := enc.model.GetPieces()[id].GetPiece()
+			piece := proc.model.GetPieces()[id].GetPiece()
 			sb.WriteString(replaceSeparatorsBySpace(piece))
 		}
 		i = nextNonByte + 1
@@ -381,18 +384,18 @@ func (enc *Encoder) Decode(ids []int) string {
 // DecodeTokens is a convenience wrapper around [Decode], accepting a list of
 // tokens as returned by [Encode]. It only uses the ID fields of tokens to
 // decode the text.
-func (enc *Encoder) DecodeTokens(tokens []Token) string {
+func (proc *Processor) DecodeTokens(tokens []Token) string {
 	ids := make([]int, len(tokens))
 	for i, t := range tokens {
 		ids[i] = t.ID
 	}
-	return enc.Decode(ids)
+	return proc.Decode(ids)
 }
 
-func (enc *Encoder) isByteID(id int) bool {
-	return enc.model.GetPieces()[id].GetType() == model.ModelProto_SentencePiece_BYTE
+func (proc *Processor) isByteID(id int) bool {
+	return proc.model.GetPieces()[id].GetType() == model.ModelProto_SentencePiece_BYTE
 }
 
-func (enc *Encoder) isControlID(id int) bool {
-	return enc.model.GetPieces()[id].GetType() == model.ModelProto_SentencePiece_CONTROL
+func (proc *Processor) isControlID(id int) bool {
+	return proc.model.GetPieces()[id].GetType() == model.ModelProto_SentencePiece_CONTROL
 }

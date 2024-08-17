@@ -63,7 +63,7 @@ func main() {
 			}
 		}
 	} else if *fEncodeFile != "" {
-		enc, err := sentencepiece.NewEncoderFromPath(modelPath)
+		proc, err := sentencepiece.NewProcessorFromPath(modelPath)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -73,7 +73,7 @@ func main() {
 			log.Fatal(err)
 		}
 
-		tokens := enc.Encode(string(b))
+		tokens := proc.Encode(string(b))
 		for _, t := range tokens {
 			fmt.Println(t.ID)
 		}

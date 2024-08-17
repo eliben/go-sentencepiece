@@ -14,7 +14,7 @@ import (
 	"testing"
 )
 
-// "System" test for comparing our Encoder with the canonical sentencepiece
+// "System" test for comparing our Procesor with the canonical sentencepiece
 // Python package (officially distributed with the original C++ implementation
 // of the algorithm).
 // It also runs Decode for a round-trip test to ensure we get the original
@@ -26,7 +26,7 @@ import (
 // was installed.
 
 func TestVsSentencepiecePython(t *testing.T) {
-	enc := createEncoder(t)
+	proc := createProcessor(t)
 
 	if _, err := exec.Command("python3", "-c", "import sentencepiece").Output(); err != nil {
 		t.Skip("This test only runs when python3 with sentencepiece is available")
@@ -51,14 +51,14 @@ func TestVsSentencepiecePython(t *testing.T) {
 
 			pyIDs := pyOutToIDs(pyOut)
 
-			// Step 2: use our Encoder to tokenize path into IDs.
+			// Step 2: use our Processor to tokenize path into IDs.
 			buf, err := ioutil.ReadFile(path)
 			if err != nil {
 				log.Fatal(err)
 			}
 			text := string(buf)
 			var goIDs []int
-			goTokens := enc.Encode(text)
+			goTokens := proc.Encode(text)
 			for _, t := range goTokens {
 				goIDs = append(goIDs, t.ID)
 			}
@@ -73,7 +73,7 @@ func TestVsSentencepiecePython(t *testing.T) {
 			}
 
 			// Step 4: round-trip Decode to get original text back
-			newText := enc.Decode(goIDs)
+			newText := proc.Decode(goIDs)
 			if text != newText {
 				t.Errorf("text mismatch after Decode")
 			}

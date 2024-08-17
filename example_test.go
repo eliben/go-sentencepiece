@@ -28,4 +28,20 @@ func ExampleEncode() {
 	}
 }
 
-// TODO: example for decode
+func ExampleDecode() {
+	protoFile := os.Getenv("MODELPATH")
+	if protoFile == "" {
+		log.Println("Need MODELPATH env var to run example")
+		return
+	}
+
+	proc, err := sentencepiece.NewProcessorFromPath(protoFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ids := []int{17534, 2134}
+	text := proc.Decode(ids)
+
+	fmt.Println(text)
+}

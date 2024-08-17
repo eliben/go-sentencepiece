@@ -12,7 +12,7 @@ func BenchmarkEncoder(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	sbuf := string(buf[:2000])
+	sbuf := string(buf)
 
 	enc := createEncoder(b)
 	b.ResetTimer()
@@ -25,4 +25,26 @@ func BenchmarkEncoder(b *testing.B) {
 	runtime.KeepAlive(total)
 
 	b.ReportMetric(float64(total)/float64(b.Elapsed().Seconds()), "tokens/sec")
+}
+
+func BenchmarkDecoder(b *testing.B) {
+	buf, err := ioutil.ReadFile(filepath.Join("test", "pg7193_english.txt"))
+	if err != nil {
+		b.Fatal(err)
+	}
+	sbuf := string(buf)
+
+	enc := createEncoder(b)
+	toks := enc.Encode(sbuf)
+
+	b.ResetTimer()
+	total := 0
+
+	for i := 0; i < b.N; i++ {
+		t := enc.DecodeTokens(toks)
+		total += len(t)
+	}
+	runtime.KeepAlive(total)
+
+	b.ReportMetric(float64(len(toks)*b.N)/float64(b.Elapsed().Seconds()), "tokens/sec")
 }

@@ -349,7 +349,9 @@ func (enc *Encoder) Decode(ids []int) string {
 			}
 
 			for len(buf) > 0 {
-				// TODO: handling of error runes...
+				// DecodeRune returns utf8.RuneError ('\uFFFD') for bad UTF8 encodings,
+				// and this is exactly what SentencePiece is supposed to emit for them.
+				// So we don't do any special handling for UTF8 decode errors here.
 				r, size := utf8.DecodeRune(buf)
 				sb.WriteRune(r)
 				buf = buf[size:]
@@ -362,6 +364,10 @@ func (enc *Encoder) Decode(ids []int) string {
 		// Here nextNonByte is the index of an ID that's not a single byte.
 		id := ids[nextNonByte]
 		if enc.isControlID(id) {
+			// Don't emit anything for control IDs
+		} else if id == enc.unknownID {
+			// Special "unk_surface" string for unknown IDs
+			sb.WriteString(enc.model.GetTrainerSpec().GetUnkSurface())
 		} else {
 			piece := enc.model.GetPieces()[id].GetPiece()
 			sb.WriteString(replaceSeparatorsBySpace(piece))

@@ -175,7 +175,19 @@ func TestDecoder(t *testing.T) {
 		{[]int{145}, "        "},
 		{[]int{441, 401, 387}, "ส"},
 		{[]int{411, 380}, "£"},
+
+		// control IDs (0, 1, 2)
 		{[]int{2, 411, 380}, "£"},
+		{[]int{1, 2, 411, 380}, "£"},
+		{[]int{2, 411, 380, 0, 1, 2, 0}, "£"},
+
+		// unknown (id=3)
+		{[]int{3, 411, 380}, " ⁇ £"},
+		{[]int{3, 3, 1000, 3}, " ⁇  ⁇ ew ⁇ "},
+
+		// invalid bytes for UTF-8, produce "invalid unicode" runes
+		{[]int{349, 349, 349}, "���"},
+		{[]int{800, 348, 500, 348}, "sed�it�"},
 	}
 
 	for _, tt := range tests {

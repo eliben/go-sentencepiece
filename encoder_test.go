@@ -173,6 +173,9 @@ func TestDecoder(t *testing.T) {
 		{[]int{139}, "  "},
 		{[]int{140}, "   "},
 		{[]int{145}, "        "},
+		{[]int{441, 401, 387}, "ส"},
+		{[]int{411, 380}, "£"},
+		{[]int{2, 411, 380}, "£"},
 	}
 
 	for _, tt := range tests {

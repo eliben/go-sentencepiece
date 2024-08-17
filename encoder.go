@@ -360,8 +360,12 @@ func (enc *Encoder) Decode(ids []int) string {
 			break
 		}
 		// Here nextNonByte is the index of an ID that's not a single byte.
-		piece := enc.model.GetPieces()[ids[nextNonByte]].GetPiece()
-		sb.WriteString(replaceSeparatorsBySpace(piece))
+		id := ids[nextNonByte]
+		if enc.isControlID(id) {
+		} else {
+			piece := enc.model.GetPieces()[id].GetPiece()
+			sb.WriteString(replaceSeparatorsBySpace(piece))
+		}
 		i = nextNonByte + 1
 	}
 
@@ -381,4 +385,8 @@ func (enc *Encoder) DecodeTokens(tokens []Token) string {
 
 func (enc *Encoder) isByteID(id int) bool {
 	return enc.model.GetPieces()[id].GetType() == model.ModelProto_SentencePiece_BYTE
+}
+
+func (enc *Encoder) isControlID(id int) bool {
+	return enc.model.GetPieces()[id].GetType() == model.ModelProto_SentencePiece_CONTROL
 }

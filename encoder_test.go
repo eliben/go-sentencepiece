@@ -1,6 +1,7 @@
 package sentencepiece
 
 import (
+	"fmt"
 	"os"
 	"slices"
 	"testing"
@@ -152,6 +153,27 @@ func TestConvertHexValue(t *testing.T) {
 			gotN := convertHexValue(tt.in)
 			if gotN != tt.wantN {
 				t.Errorf("got %v, want %v", gotN, tt.wantN)
+			}
+		})
+	}
+}
+
+func TestDecoder(t *testing.T) {
+	enc := createEncoder(t)
+
+	var tests = []struct {
+		IDs      []int
+		wantText string
+	}{
+		{[]int{17534, 2134}, "hello world"},
+		{[]int{427, 365, 428, 357, 29422, 1653, 427, 365, 428, 357}, "Ҕӌnever againҔӌ"},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%v", tt.IDs), func(t *testing.T) {
+			got := enc.Decode(tt.IDs)
+			if got != tt.wantText {
+				t.Errorf("got %q\nwant %q\n", got, tt.wantText)
 			}
 		})
 	}

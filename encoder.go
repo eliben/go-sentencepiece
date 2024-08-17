@@ -36,6 +36,9 @@ type Encoder struct {
 
 	// byteTokens is a cache of byte values and the tokens they represent
 	byteTokens map[byte]Token
+
+	// idToByte maps IDs to byte values they represent
+	idToByte map[int]byte
 }
 
 // NewEncoderFromPath creates a new Encoder from a file path to the protobuf
@@ -67,10 +70,16 @@ func NewEncoder(protoReader io.Reader) (*Encoder, error) {
 		return nil, fmt.Errorf("model type %s not supported", tspec.GetModelType())
 	}
 
+	nspec := mp.GetNormalizerSpec()
+	if *nspec.AddDummyPrefix || *nspec.RemoveExtraWhitespaces {
+		return nil, fmt.Errorf("normalizer spec options not supported: %s", nspec)
+	}
+
 	userDefined := make(map[string]bool)
 	pieces := make(map[string]int)
 	reserved := make(map[string]int)
 	byteTokens := make(map[byte]Token)
+	idToByte := make(map[int]byte)
 	unkID := -1
 
 	for i, piece := range mp.GetPieces() {
@@ -98,6 +107,7 @@ func NewEncoder(protoReader io.Reader) (*Encoder, error) {
 			bv := convertHexValue(piece.GetPiece())
 			if bv >= 0 && bv < 256 {
 				byteTokens[byte(bv)] = Token{ID: i, Text: piece.GetPiece()}
+				idToByte[i] = byte(bv)
 			}
 		}
 	}
@@ -120,6 +130,7 @@ func NewEncoder(protoReader io.Reader) (*Encoder, error) {
 		model:              &mp,
 		userDefinedMatcher: prefixmatcher.NewFromSet(userDefined),
 		byteTokens:         byteTokens,
+		idToByte:           idToByte,
 		unknownID:          unkID,
 		pieces:             pieces,
 		reserved:           reserved,
@@ -315,4 +326,47 @@ func convertHexValue(bv string) int {
 		return -1
 	}
 	return int(n)
+}
+
+// Decode translates a list of IDs produced by the encoder into the string it
+// represents.
+// TODO: add a version that takes Tokens and IDs
+func (enc *Encoder) Decode(ids []int) string {
+	var sb strings.Builder
+
+	for i := 0; i < len(ids); {
+		// Find a run of IDs that represent single bytes starting at i.
+		nextNonByte := i
+		for nextNonByte < len(ids) && enc.isByteID(ids[nextNonByte]) {
+			nextNonByte++
+		}
+		numBytes := nextNonByte - i
+
+		if numBytes > 0 {
+			buf := make([]byte, 0, numBytes)
+			for bi := i; bi < nextNonByte; bi++ {
+				buf = append(buf, enc.idToByte[ids[bi]])
+			}
+
+			for len(buf) > 0 {
+				r, size := utf8.DecodeRune(buf)
+				sb.WriteRune(r)
+				buf = buf[size:]
+			}
+		}
+
+		if nextNonByte >= len(ids) {
+			break
+		}
+		// Here nextNonByte is the index of an ID that's not a single byte.
+		piece := enc.model.GetPieces()[ids[nextNonByte]].GetPiece()
+		sb.WriteString(replaceSeparatorsBySpace(piece))
+		i = nextNonByte + 1
+	}
+
+	return sb.String()
+}
+
+func (enc *Encoder) isByteID(id int) bool {
+	return enc.model.GetPieces()[id].GetType() == model.ModelProto_SentencePiece_BYTE
 }

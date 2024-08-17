@@ -15,8 +15,6 @@ function init() {
     onStateChange();
 }
 
-// TODO: newlines not working great
-
 //------------------
 
 function onStateChange() {

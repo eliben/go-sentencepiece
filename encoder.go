@@ -349,6 +349,7 @@ func (enc *Encoder) Decode(ids []int) string {
 			}
 
 			for len(buf) > 0 {
+				// TODO: handling of error runes...
 				r, size := utf8.DecodeRune(buf)
 				sb.WriteRune(r)
 				buf = buf[size:]

@@ -20,6 +20,7 @@ import (
 func main() {
 	fDumpAll := flag.Bool("dumpall", false, "dump entire model proto")
 	fFindUni := flag.Bool("finduni", false, "find unicode runes not in pieces")
+	fFindBytes := flag.Bool("findbytes", false, "show all byte pieces with their IDs")
 	fEncodeFile := flag.String("encodefile", "", "file name to open and encode")
 	flag.Parse()
 
@@ -33,17 +34,24 @@ func main() {
 		log.Fatal(err)
 	}
 
-	var model model.ModelProto
-	err = proto.Unmarshal(b, &model)
+	var protomodel model.ModelProto
+	err = proto.Unmarshal(b, &protomodel)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	if *fDumpAll {
-		fmt.Println(prototext.Format(&model))
+		fmt.Println(prototext.Format(&protomodel))
+	} else if *fFindBytes {
+		for i, piece := range protomodel.GetPieces() {
+			if piece.GetType() == model.ModelProto_SentencePiece_BYTE {
+				fmt.Printf("%5d: %s\n", i, piece.GetPiece())
+			}
+		}
+
 	} else if *fFindUni {
 		pieces := make(map[string]int)
-		for i, piece := range model.GetPieces() {
+		for i, piece := range protomodel.GetPieces() {
 			pieces[piece.GetPiece()] = i
 		}
 

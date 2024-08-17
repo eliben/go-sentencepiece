@@ -1,5 +1,11 @@
 # go-sentencepiece
 
+<p align="center">
+  <img alt="Logo" src="doc/toklogo2.png" />
+</p>
+
+----
+
 [![Go Reference](https://pkg.go.dev/badge/github.com/eliben/go-sentencepiece.svg)](https://pkg.go.dev/github.com/eliben/go-sentencepiece)
 
 This is a pure Go implementation of encoding and decoding text with

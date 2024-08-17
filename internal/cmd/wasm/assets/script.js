@@ -42,14 +42,18 @@ function onStateChange() {
         // and not repeat for 8 cycles (since 360/8 = 45, we could use any
         // multiple of 45 that's not also a multiple of 180).
         for (let i = 0; i < pieces.length; i++) {
-            let color = i % 8;
-            let span = document.createElement('span');
-            span.textContent = pieces[i];
-            span.style.lineHeight = 1.5;
-            span.style.backgroundColor = `hsl(${color * 135}, 40%, 70%)`;
-            span.style.whiteSpace = 'pre';
-            span.style.display = 'inline-block';
-            OutBox.appendChild(span);
+            if (pieces[i] === '\n') {
+                OutBox.appendChild(document.createElement('br'));
+            } else {
+                let color = i % 8;
+                let span = document.createElement('span');
+                span.textContent = pieces[i];
+                span.style.lineHeight = 1.5;
+                span.style.backgroundColor = `hsl(${color * 135}, 40%, 70%)`;
+                span.style.whiteSpace = 'pre';
+                span.style.display = 'inline-block';
+                OutBox.appendChild(span);
+            }
         }
     }
 }

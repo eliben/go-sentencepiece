@@ -17,6 +17,8 @@ import (
 // "System" test for comparing our Encoder with the canonical sentencepiece
 // Python package (officially distributed with the original C++ implementation
 // of the algorithm).
+// It also runs Decode for a round-trip test to ensure we get the original
+// text back.
 //
 // This test will only run if python3 is available and is able to successfully
 // load the sentencepiece library. Typically this means that 'go test' will
@@ -54,8 +56,9 @@ func TestVsSentencepiecePython(t *testing.T) {
 			if err != nil {
 				log.Fatal(err)
 			}
+			text := string(buf)
 			var goIDs []int
-			goTokens := enc.Encode(string(buf))
+			goTokens := enc.Encode(text)
 			for _, t := range goTokens {
 				goIDs = append(goIDs, t.ID)
 			}
@@ -67,6 +70,12 @@ func TestVsSentencepiecePython(t *testing.T) {
 				tmpgo := dumpIDsToTempFile(testname+"-go-", goIDs)
 
 				t.Errorf("IDs mismatch; dumped to %q and %q", tmppy, tmpgo)
+			}
+
+			// Step 4: round-trip Decode to get original text back
+			newText := enc.Decode(goIDs)
+			if text != newText {
+				t.Errorf("text mismatch after Decode")
 			}
 		})
 	}

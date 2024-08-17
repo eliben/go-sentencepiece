@@ -167,6 +167,12 @@ func TestDecoder(t *testing.T) {
 	}{
 		{[]int{17534, 2134}, "hello world"},
 		{[]int{427, 365, 428, 357, 29422, 1653, 427, 365, 428, 357}, "Ҕӌnever againҔӌ"},
+		{[]int{785, 2017, 108, 639, 2550, 2017}, "one line\nand another line"},
+		{[]int{1001, 1002, 1003, 1004}, "buark}) res"},
+		{[]int{111001, 111002, 111003, 111004}, " Wichita EducaçãoVocabulary天堂"},
+		{[]int{139}, "  "},
+		{[]int{140}, "   "},
+		{[]int{145}, "        "},
 	}
 
 	for _, tt := range tests {
@@ -176,5 +182,19 @@ func TestDecoder(t *testing.T) {
 				t.Errorf("got %q\nwant %q\n", got, tt.wantText)
 			}
 		})
+	}
+}
+
+func TestDecodeTokens(t *testing.T) {
+	enc := createEncoder(t)
+	wantText := "hello   world"
+	tokens := []Token{
+		Token{17534, "xxx"},
+		Token{139, "xxx"},
+		Token{2134, "xxx"}}
+
+	text := enc.DecodeTokens(tokens)
+	if text != wantText {
+		t.Errorf("got %q, want %q", text, wantText)
 	}
 }

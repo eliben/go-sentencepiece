@@ -328,9 +328,8 @@ func convertHexValue(bv string) int {
 	return int(n)
 }
 
-// Decode translates a list of IDs produced by the encoder into the string it
-// represents.
-// TODO: add a version that takes Tokens and IDs
+// Decode translates a list of IDs produced by the encoder back into the string
+// it represents.
 func (enc *Encoder) Decode(ids []int) string {
 	var sb strings.Builder
 
@@ -342,6 +341,7 @@ func (enc *Encoder) Decode(ids []int) string {
 		}
 		numBytes := nextNonByte - i
 
+		// Handle a run of numBytes IDs, by decoding them into utf8 runes.
 		if numBytes > 0 {
 			buf := make([]byte, 0, numBytes)
 			for bi := i; bi < nextNonByte; bi++ {
@@ -365,6 +365,17 @@ func (enc *Encoder) Decode(ids []int) string {
 	}
 
 	return sb.String()
+}
+
+// DecodeTokens is a convenience wrapper around [Decode], accepting a list of
+// tokens as returned by [Encode]. It only uses the ID fields of tokens to
+// decode the text.
+func (enc *Encoder) DecodeTokens(tokens []Token) string {
+	ids := make([]int, len(tokens))
+	for i, t := range tokens {
+		ids[i] = t.ID
+	}
+	return enc.Decode(ids)
 }
 
 func (enc *Encoder) isByteID(id int) bool {

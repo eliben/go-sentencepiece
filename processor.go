@@ -392,6 +392,11 @@ func (proc *Processor) DecodeTokens(tokens []Token) string {
 	return proc.Decode(ids)
 }
 
+// VocabularySize obtains the vocabulary size from the proto model.
+func (proc *Processor) VocabularySize() int {
+	return len(proc.model.GetPieces())
+}
+
 func (proc *Processor) isByteID(id int) bool {
 	return proc.model.GetPieces()[id].GetType() == model.ModelProto_SentencePiece_BYTE
 }

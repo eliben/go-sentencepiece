@@ -213,3 +213,14 @@ func TestDecodeTokens(t *testing.T) {
 		t.Errorf("got %q, want %q", text, wantText)
 	}
 }
+
+func TestVocabularySize(t *testing.T) {
+	proc := createProcessor(t)
+
+	// Assumes we use the known model file
+	wantVocabSize := 256000
+
+	if proc.VocabularySize() != wantVocabSize {
+		t.Errorf("got %v, want %v", proc.VocabularySize(), wantVocabSize)
+	}
+}

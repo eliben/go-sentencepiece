@@ -1,0 +1,135 @@
+<!doctype html>
+<style>
+  .container {
+    font-family: Verdana, sans-serif;
+    margin: 0 auto;
+    display: grid;
+    max-width: 900px;
+    grid-template-columns: 2fr 1fr;
+    grid-template-rows: repeat(5, fit-content());
+    grid-template-areas:
+      "textTitle  sidebar"
+      "textBox    sidebar"
+      "outTitle   sidebar"
+      "outBox     sidebar"
+      "flipbox    sidebar"
+  }
+
+  .textTitle {
+    grid-area: textTitle;
+    justify-self: center;
+    font-weight: bold;
+  }
+
+  .textBox {
+    grid-area: textBox;
+    justify-self: center;
+  }
+
+  .outTitle {
+    grid-area: outTitle;
+    justify-self: center;
+    font-weight: bold;
+    padding-top: 40px;
+  }
+
+  .outBox {
+    display: inline-block;
+    grid-area: outBox;
+    justify-self: center;
+    padding: 10px;
+    max-height: 500px;
+    min-height: 200px;
+    width: 550px;
+    background: #dbdbdb;
+    overflow: auto;
+    font-family: Verdana, monospace;
+    font-size: 14px;
+  }
+
+  .flipbox {
+    grid-area: flipbox;
+    justify-self: center;
+    text-align: center;
+    padding-top: 6px;
+    padding-right: 10px;
+  }
+
+  .sidebar {
+    grid-area: sidebar;
+    font-family: Verdana, sans-serif;
+    font-size: 14px;
+    border: solid 1px;
+    border-color: darkgray;
+    padding: 5px;
+  }
+
+  .sidebar-list {
+    padding-left: 1em;
+  }
+
+  .toggle-switch {
+    display: flex;
+    border: 2px solid #656865;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .option {
+    flex: 1;
+    text-align: center;
+    padding: 6px 6px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    user-select: none;
+  }
+
+  input[type="radio"] {
+    display: none;
+  }
+
+  input[type="radio"]:checked+label {
+    background-color: #4c6faf;
+    color: white;
+  }
+</style>
+
+<script src="wasm_exec.js"></script>
+<script>
+  const go = new Go();
+  WebAssembly.instantiateStreaming(fetch("gospm.wasm"), go.importObject).then(
+    (result) => {
+      go.run(result.instance);
+      init();
+    });
+</script>
+
+<body>
+  <div class="container">
+    <div class="textTitle">Text</div>
+    <div class="textBox">
+      <textarea id="text" name="text" rows="12" cols="70" spellcheck="false"></textarea>
+    </div>
+    <div class="outTitle">Tokens</div>
+    <div class="outBox">
+      <div id="tokens" name="tokens"></div>
+    </div>
+    <div class="flipbox">
+      <div class="toggle-switch">
+        <input type="radio" id="showText" name="toggle" value="showText" checked>
+        <label for="showText" class="option">Text</label>
+
+        <input type="radio" id="showTokens" name="toggle" value="showTokens">
+        <label for="showTokens" class="option">IDs</label>
+      </div>
+    </div>
+    <div class="sidebar">
+      <p><b>SentencePiece tokenizer</b></p>
+      <p>
+        Enter text in the box - tokenization is done as you type.
+      </p>
+
+    </div>
+  </div>
+  <script src="script.js"></script>
+</body>

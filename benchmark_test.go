@@ -18,7 +18,7 @@ func BenchmarkEncoder(b *testing.B) {
 	b.ResetTimer()
 	total := 0
 
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		toks := proc.Encode(sbuf)
 		total += len(toks)
 	}
@@ -40,7 +40,7 @@ func BenchmarkDecoder(b *testing.B) {
 	b.ResetTimer()
 	total := 0
 
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		t := proc.DecodeTokens(toks)
 		total += len(t)
 	}

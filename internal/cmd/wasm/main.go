@@ -1,3 +1,8 @@
+//go:build js && wasm
+
+// Main binary for exposing the go-sentencepiece functionality in the browser
+// via WASM. The required functionality is exposed via the syscall/js interface.
+// This module should only be built in js && wasm mode.
 package main
 
 import (

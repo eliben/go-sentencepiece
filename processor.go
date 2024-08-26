@@ -42,6 +42,10 @@ type Processor struct {
 
 	// idToByte maps IDs to byte values they represent
 	idToByte map[int]byte
+
+	// maxPieceLength is the maximum length of a piece in the model.
+	// This is used to preallocate a buffer for merging symbols.
+	maxPieceLength int
 }
 
 // NewProcessorFromPath creates a new Processor from a file path to the protobuf
@@ -84,6 +88,7 @@ func NewProcessor(protoReader io.Reader) (*Processor, error) {
 	byte2Token := make(map[byte]Token)
 	idToByte := make(map[int]byte)
 	unkID := -1
+	maxPieceLength := 0
 
 	for i, piece := range mp.GetPieces() {
 		isNormalPiece := (piece.GetType() == model.ModelProto_SentencePiece_NORMAL ||
@@ -92,6 +97,7 @@ func NewProcessor(protoReader io.Reader) (*Processor, error) {
 
 		if isNormalPiece {
 			pieces[piece.GetPiece()] = i
+			maxPieceLength = max(maxPieceLength, len(piece.GetPiece()))
 		} else {
 			reserved[piece.GetPiece()] = i
 		}
@@ -137,6 +143,7 @@ func NewProcessor(protoReader io.Reader) (*Processor, error) {
 		unknownID:          unkID,
 		pieces:             pieces,
 		reserved:           reserved,
+		maxPieceLength:     maxPieceLength,
 	}, nil
 }
 
@@ -218,6 +225,18 @@ func (proc *Processor) Encode(text string) []Token {
 		return -1
 	})
 
+	buf := make([]byte, proc.maxPieceLength) // reusable buffer for merging symbols
+	mergeSymbols := func(x, y symListElem) (string, int, bool) {
+		buf = buf[:len(x.symbol)+len(y.symbol)]
+		copy(buf, x.symbol)
+		copy(buf[len(x.symbol):], y.symbol)
+		id, found := proc.pieces[string(buf)]
+		if found {
+			return proc.model.GetPieces()[id].GetPiece(), id, true
+		}
+		return "", 0, false
+	}
+
 	// suggestNewMergePair is called to potentially add a new mergeCandidate to
 	// mergeQueue. The candidate is added if it's valid, both its parts are
 	// allowed to merge, and it appears in the vocabulary.
@@ -226,15 +245,16 @@ func (proc *Processor) Encode(text string) []Token {
 			return
 		}
 
-		mergedSymbol := symList[left].symbol + symList[right].symbol
-		if id, found := proc.pieces[mergedSymbol]; found {
-			mergeQueue.Insert(mergeCandidate{
-				left:   left,
-				right:  right,
-				length: len(mergedSymbol),
-				score:  proc.model.GetPieces()[id].GetScore(),
-			})
+		mergedSymbol, id, ok := mergeSymbols(symList[left], symList[right])
+		if !ok {
+			return
 		}
+		mergeQueue.Insert(mergeCandidate{
+			left:   left,
+			right:  right,
+			length: len(mergedSymbol),
+			score:  proc.model.GetPieces()[id].GetScore(),
+		})
 	}
 
 	// Seed the merge queue with all pairs of symbols from symList
@@ -271,7 +291,11 @@ func (proc *Processor) Encode(text string) []Token {
 
 		// Do the merge:
 		// 1. Merge the concatenation of leftSymbol and rightSymbol into leftSymbol
-		symList[candidate.left].symbol = leftSymbol.symbol + rightSymbol.symbol
+		mergedSymbol, _, ok := mergeSymbols(leftSymbol, rightSymbol)
+		if !ok {
+			panic("failed to merge symbols")
+		}
+		symList[candidate.left].symbol = mergedSymbol
 		nTokens--
 
 		// 2. Update prev/next pointers

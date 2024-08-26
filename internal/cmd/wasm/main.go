@@ -28,7 +28,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("processor loaded, vocab len=%v\n", spm.VocabularySize())
+		fmt.Printf("processor loaded, vocab len=%v\n", spm.ModelInfo().VocabularySize)
 	})
 
 	js.Global().Set("textToIDs", jsTextToIDs)

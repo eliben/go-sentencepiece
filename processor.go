@@ -188,6 +188,7 @@ func (proc *Processor) Encode(text string) []Token {
 		return nil
 	}
 	symList[len(symList)-1].next = -1
+	nTokens := len(symList)
 
 	debugShowSymList := func(prefix string) {
 		if debugEncode {
@@ -258,6 +259,7 @@ func (proc *Processor) Encode(text string) []Token {
 		// Do the merge:
 		// 1. Merge the concatenation of leftSymbol and rightSymbol into leftSymbol
 		symList[candidate.left].symbol = leftSymbol.symbol + rightSymbol.symbol
+		nTokens--
 
 		// 2. Update prev/next pointers
 		symList[candidate.left].next = rightSymbol.next
@@ -275,7 +277,7 @@ func (proc *Processor) Encode(text string) []Token {
 	}
 
 	// Collect the final list of tokens from the remaining elements of symList.
-	tokens := make([]Token, 0, len(symList))
+	tokens := make([]Token, 0, nTokens)
 	for i := 0; i >= 0; i = symList[i].next {
 		symbol := symList[i].symbol
 		id := proc.symbolToID(symbol)

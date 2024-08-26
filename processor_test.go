@@ -214,13 +214,30 @@ func TestDecodeTokens(t *testing.T) {
 	}
 }
 
-func TestVocabularySize(t *testing.T) {
+func TestInfo(t *testing.T) {
 	proc := createProcessor(t)
+	info := proc.ModelInfo()
 
 	// Assumes we use the known model file
 	wantVocabSize := 256000
+	wantBOS := 2
+	wantEOS := 1
+	wantPAD := 0
+	wantUNK := 3
 
-	if proc.VocabularySize() != wantVocabSize {
-		t.Errorf("got %v, want %v", proc.VocabularySize(), wantVocabSize)
+	if info.VocabularySize != wantVocabSize {
+		t.Errorf("got %v, want %v", info.VocabularySize, wantVocabSize)
+	}
+	if info.BeginningOfSentenceID != wantBOS {
+		t.Errorf("got %v, want %v", info.BeginningOfSentenceID, wantBOS)
+	}
+	if info.EndOfSentenceID != wantEOS {
+		t.Errorf("got %v, want %v", info.EndOfSentenceID, wantEOS)
+	}
+	if info.PadID != wantPAD {
+		t.Errorf("got %v, want %v", info.PadID, wantPAD)
+	}
+	if info.UnknownID != wantUNK {
+		t.Errorf("got %v, want %v", info.UnknownID, wantUNK)
 	}
 }

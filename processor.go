@@ -307,6 +307,11 @@ func (proc *Processor) symbolMatch(text string) (int, bool) {
 	return rlen, false
 }
 
+const symbolBOS = "<bos>"
+const symbolEOS = "<eos>"
+const symbolUNK = "<unk>"
+const symbolPAD = "<pad>"
+
 // symbolToID finds the right ID for the given textual symbol, or returns
 // proc.unknownID if the symbol is unknown.
 func (proc *Processor) symbolToID(symbol string) int {
@@ -392,15 +397,37 @@ func (proc *Processor) DecodeTokens(tokens []Token) string {
 	return proc.Decode(ids)
 }
 
-// VocabularySize returns the vocabulary size from the proto model.
-func (proc *Processor) VocabularySize() int {
-	return len(proc.model.GetPieces())
-}
-
 func (proc *Processor) isByteID(id int) bool {
 	return proc.model.GetPieces()[id].GetType() == model.ModelProto_SentencePiece_BYTE
 }
 
 func (proc *Processor) isControlID(id int) bool {
 	return proc.model.GetPieces()[id].GetType() == model.ModelProto_SentencePiece_CONTROL
+}
+
+// ModelInfo stores information about the model proto loaded by the processor.
+type ModelInfo struct {
+	VocabularySize        int
+	BeginningOfSentenceID int
+	EndOfSentenceID       int
+	UnknownID             int
+	PadID                 int
+}
+
+// ModelInfo returns information about the loaded proto model file.
+func (proc *Processor) ModelInfo() *ModelInfo {
+	getControlID := func(symbol string) int {
+		if id := proc.symbolToID(symbol); proc.isControlID(id) {
+			return id
+		}
+		return -1
+	}
+
+	return &ModelInfo{
+		VocabularySize:        len(proc.model.GetPieces()),
+		BeginningOfSentenceID: getControlID(symbolBOS),
+		EndOfSentenceID:       getControlID(symbolEOS),
+		PadID:                 getControlID(symbolPAD),
+		UnknownID:             proc.unknownID,
+	}
 }

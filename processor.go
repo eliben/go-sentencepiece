@@ -242,7 +242,14 @@ func (proc *Processor) Encode(text string) []Token {
 		suggestNewMergePair(i-1, i)
 	}
 
+	candidateIsDead := func(candidate mergeCandidate) bool {
+		leftSymbol := symList[candidate.left].symbol
+		rightSymbol := symList[candidate.right].symbol
+		return leftSymbol == "" || rightSymbol == "" || len(leftSymbol)+len(rightSymbol) != candidate.length
+	}
+
 	// Main loop
+	mergeQueueDead := 0
 	for mergeQueue.Len() > 0 {
 		candidate := mergeQueue.PopMax()
 		leftSymbol := symList[candidate.left]
@@ -250,10 +257,16 @@ func (proc *Processor) Encode(text string) []Token {
 
 		// Make sure this candidate is not out of date. If one of its parts was
 		// already merged with another symbol, just skip this candidate.
-		if len(leftSymbol.symbol) == 0 ||
-			len(rightSymbol.symbol) == 0 ||
-			len(leftSymbol.symbol)+len(rightSymbol.symbol) != candidate.length {
+		if candidateIsDead(candidate) {
+			mergeQueueDead--
 			continue
+		}
+
+		// If there are lots more dead merge candidates than live ones, remove the dead.
+		// The factor of 3 was determined empirically.
+		if mergeQueueDead*3 > mergeQueue.Len() {
+			mergeQueue.RemoveFunc(candidateIsDead)
+			mergeQueueDead = 0
 		}
 
 		// Do the merge:
@@ -270,6 +283,7 @@ func (proc *Processor) Encode(text string) []Token {
 		// 3. Mark the right element in the pair as outdated (it's been merged
 		//    into the left one).
 		symList[candidate.right].symbol = ""
+		mergeQueueDead++
 
 		// 4. Add merge suggestions for the newly merged symbol with its neighbors
 		suggestNewMergePair(leftSymbol.prev, candidate.left)

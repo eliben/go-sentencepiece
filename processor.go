@@ -210,7 +210,7 @@ func (proc *Processor) Encode(text string) []Token {
 		score       float32
 	}
 
-	mergeQueue := priorityqueue.New(func(a, b mergeCandidate) int {
+	mergeQueue := priorityqueue.New(len(symList), func(a, b mergeCandidate) int {
 		if a.score > b.score || (a.score == b.score && a.left < b.left) {
 			return 1
 		}
@@ -307,10 +307,12 @@ func (proc *Processor) symbolMatch(text string) (int, bool) {
 	return rlen, false
 }
 
-const symbolBOS = "<bos>"
-const symbolEOS = "<eos>"
-const symbolUNK = "<unk>"
-const symbolPAD = "<pad>"
+const (
+	symbolBOS = "<bos>"
+	symbolEOS = "<eos>"
+	symbolUNK = "<unk>"
+	symbolPAD = "<pad>"
+)
 
 // symbolToID finds the right ID for the given textual symbol, or returns
 // proc.unknownID if the symbol is unknown.

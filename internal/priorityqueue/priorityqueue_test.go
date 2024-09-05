@@ -11,7 +11,7 @@ func TestBasicQueueWithStrings(t *testing.T) {
 		return len(a) - len(b)
 	}
 
-	pq := New(stringLenCmp)
+	pq := New(-1, stringLenCmp)
 
 	assertPopAndSize := func(s string, n int) {
 		t.Helper()
@@ -102,7 +102,7 @@ func TestBasicQueueWithCustomType(t *testing.T) {
 		return a.Cost - b.Cost
 	}
 
-	pq := New(itemCostCmp)
+	pq := New(-1, itemCostCmp)
 
 	assertPop := func(s string) {
 		t.Helper()

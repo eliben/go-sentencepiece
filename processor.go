@@ -225,13 +225,15 @@ func (proc *Processor) Encode(text string) []Token {
 		return -1
 	})
 
-	buf := make([]byte, proc.maxPieceLength) // reusable buffer for merging symbols
-	mergeSymbols := func(x, y symListElem) (string, int, bool) {
+	// findMerged looks for x+y in the vocabulary, and returns the
+	// merged piece, its ID and true if found. buf is a reusable buffer used to
+	// merge two strings together without allocations.
+	buf := make([]byte, proc.maxPieceLength)
+	findMerged := func(x, y symListElem) (string, int, bool) {
 		buf = buf[:len(x.symbol)+len(y.symbol)]
 		copy(buf, x.symbol)
 		copy(buf[len(x.symbol):], y.symbol)
-		id, found := proc.pieces[string(buf)]
-		if found {
+		if id, found := proc.pieces[string(buf)]; found {
 			return proc.model.GetPieces()[id].GetPiece(), id, true
 		}
 		return "", 0, false
@@ -245,16 +247,14 @@ func (proc *Processor) Encode(text string) []Token {
 			return
 		}
 
-		mergedSymbol, id, ok := mergeSymbols(symList[left], symList[right])
-		if !ok {
-			return
+		if mergedSymbol, id, ok := findMerged(symList[left], symList[right]); ok {
+			mergeQueue.Insert(mergeCandidate{
+				left:   left,
+				right:  right,
+				length: len(mergedSymbol),
+				score:  proc.model.GetPieces()[id].GetScore(),
+			})
 		}
-		mergeQueue.Insert(mergeCandidate{
-			left:   left,
-			right:  right,
-			length: len(mergedSymbol),
-			score:  proc.model.GetPieces()[id].GetScore(),
-		})
 	}
 
 	// Seed the merge queue with all pairs of symbols from symList
@@ -262,6 +262,9 @@ func (proc *Processor) Encode(text string) []Token {
 		suggestNewMergePair(i-1, i)
 	}
 
+	// candidateIsDead indicates that a candidate is out of date: one of its
+	// parts was already merged with another symbol, so we don't want to consider
+	// it any more.
 	candidateIsDead := func(candidate mergeCandidate) bool {
 		leftSymbol := symList[candidate.left].symbol
 		rightSymbol := symList[candidate.right].symbol
@@ -275,14 +278,15 @@ func (proc *Processor) Encode(text string) []Token {
 		leftSymbol := symList[candidate.left]
 		rightSymbol := symList[candidate.right]
 
-		// Make sure this candidate is not out of date. If one of its parts was
-		// already merged with another symbol, just skip this candidate.
 		if candidateIsDead(candidate) {
 			mergeQueueDead--
 			continue
 		}
 
-		// If there are lots more dead merge candidates than live ones, remove the dead.
+		// If there are lots more dead merge candidates than live ones, remove the
+		// dead. This is a relatively expensive operation but it's performed rarely,
+		// and it makes the priority queue smaller - making all subsequent
+		// operations faster.
 		// The factor of 3 was determined empirically.
 		if mergeQueueDead*3 > mergeQueue.Len() {
 			mergeQueue.RemoveFunc(candidateIsDead)
@@ -291,7 +295,7 @@ func (proc *Processor) Encode(text string) []Token {
 
 		// Do the merge:
 		// 1. Merge the concatenation of leftSymbol and rightSymbol into leftSymbol
-		mergedSymbol, _, ok := mergeSymbols(leftSymbol, rightSymbol)
+		mergedSymbol, _, ok := findMerged(leftSymbol, rightSymbol)
 		if !ok {
 			panic("failed to merge symbols")
 		}

@@ -17,7 +17,8 @@ type PriorityQueue[T any] struct {
 
 // New creates a new PriorityQueue, configured with a function that
 // compares the priorities of two items a and b; it should return a number > 0
-// if the priority of a is higher, 0 if the priorities are equal, and a number < 0 otherwise.
+// if the priority of a is higher, 0 if the priorities are equal, and a
+// number < 0 otherwise.
 // sizeHint sets the initial capacity of the queue; -1 means to use the default.
 func New[T any](sizeHint int, cmp func(a, b T) int) *PriorityQueue[T] {
 	return &PriorityQueue[T]{cmp: cmp, items: make([]T, 1, max(1, sizeHint+1))}

@@ -1,5 +1,5 @@
-// Package priorityqueue provides a generic priority queue with Insert
-// and PopMax operations.
+// Package priorityqueue provides a generic priority queue with Insert,
+// PopMax, and RemoveFunc operations.
 package priorityqueue
 
 // PriorityQueue is a generic priority queue with a configurable comparison
@@ -17,10 +17,10 @@ type PriorityQueue[T any] struct {
 
 // New creates a new PriorityQueue, configured with a function that
 // compares the priorities of two items a and b; it should return a number > 0
-// if the priority of a is higher, 0 if the priorities are equal a number < 0
-// otherwise.
-func New[T any](cmp func(a, b T) int) *PriorityQueue[T] {
-	return &PriorityQueue[T]{cmp: cmp, items: make([]T, 1)}
+// if the priority of a is higher, 0 if the priorities are equal, and a number < 0 otherwise.
+// sizeHint sets the initial capacity of the queue; -1 means to use the default.
+func New[T any](sizeHint int, cmp func(a, b T) int) *PriorityQueue[T] {
+	return &PriorityQueue[T]{cmp: cmp, items: make([]T, 1, max(1, sizeHint+1))}
 }
 
 // Len returns the length (number of items) of the priority queue.
@@ -44,8 +44,39 @@ func (pq *PriorityQueue[T]) PopMax() T {
 	maxItem := pq.items[1]
 	pq.items[1] = pq.items[len(pq.items)-1]
 	pq.items = pq.items[:len(pq.items)-1]
-	pq.siftdown()
+	pq.siftdown(1)
 	return maxItem
+}
+
+// RemoveFunc removes all elements for which rm returns true.
+func (pq *PriorityQueue[T]) RemoveFunc(rm func(T) bool) {
+	// This is effectively slices.DeleteFunc, but inlined because we start from index 1.
+	i := 1
+	for ; i < len(pq.items); i++ {
+		if rm(pq.items[i]) {
+			break
+		}
+	}
+	if i == len(pq.items) {
+		return // nothing to remove
+	}
+	for j := i + 1; j < len(pq.items); j++ {
+		if v := pq.items[j]; !rm(v) {
+			pq.items[i] = v
+			i++
+		}
+	}
+	// Clear the tail.
+	clear(pq.items[i:])
+	pq.items = pq.items[:i]
+	pq.rebuildHeap()
+}
+
+// rebuildHeap rebuilds the entire heap from scratch.
+func (pq *PriorityQueue[T]) rebuildHeap() {
+	for i := len(pq.items) / 2; i >= 1; i-- {
+		pq.siftdown(i)
+	}
 }
 
 func (pq *PriorityQueue[T]) siftup(n int) {
@@ -66,8 +97,7 @@ func (pq *PriorityQueue[T]) siftup(n int) {
 	}
 }
 
-func (pq *PriorityQueue[T]) siftdown() {
-	i := 1
+func (pq *PriorityQueue[T]) siftdown(i int) {
 	for {
 		c := 2 * i
 		if c >= len(pq.items) {

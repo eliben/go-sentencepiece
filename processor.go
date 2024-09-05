@@ -42,6 +42,10 @@ type Processor struct {
 
 	// idToByte maps IDs to byte values they represent
 	idToByte map[int]byte
+
+	// maxPieceLength is the maximum length of a piece in the model.
+	// This is used to preallocate a buffer for merging symbols.
+	maxPieceLength int
 }
 
 // NewProcessorFromPath creates a new Processor from a file path to the protobuf
@@ -84,6 +88,7 @@ func NewProcessor(protoReader io.Reader) (*Processor, error) {
 	byte2Token := make(map[byte]Token)
 	idToByte := make(map[int]byte)
 	unkID := -1
+	maxPieceLength := 0
 
 	for i, piece := range mp.GetPieces() {
 		isNormalPiece := (piece.GetType() == model.ModelProto_SentencePiece_NORMAL ||
@@ -92,6 +97,7 @@ func NewProcessor(protoReader io.Reader) (*Processor, error) {
 
 		if isNormalPiece {
 			pieces[piece.GetPiece()] = i
+			maxPieceLength = max(maxPieceLength, len(piece.GetPiece()))
 		} else {
 			reserved[piece.GetPiece()] = i
 		}
@@ -137,6 +143,7 @@ func NewProcessor(protoReader io.Reader) (*Processor, error) {
 		unknownID:          unkID,
 		pieces:             pieces,
 		reserved:           reserved,
+		maxPieceLength:     maxPieceLength,
 	}, nil
 }
 
@@ -188,6 +195,7 @@ func (proc *Processor) Encode(text string) []Token {
 		return nil
 	}
 	symList[len(symList)-1].next = -1
+	nTokens := len(symList)
 
 	debugShowSymList := func(prefix string) {
 		if debugEncode {
@@ -210,12 +218,24 @@ func (proc *Processor) Encode(text string) []Token {
 		score       float32
 	}
 
-	mergeQueue := priorityqueue.New(func(a, b mergeCandidate) int {
+	mergeQueue := priorityqueue.New(len(symList), func(a, b mergeCandidate) int {
 		if a.score > b.score || (a.score == b.score && a.left < b.left) {
 			return 1
 		}
 		return -1
 	})
+
+	buf := make([]byte, proc.maxPieceLength) // reusable buffer for merging symbols
+	mergeSymbols := func(x, y symListElem) (string, int, bool) {
+		buf = buf[:len(x.symbol)+len(y.symbol)]
+		copy(buf, x.symbol)
+		copy(buf[len(x.symbol):], y.symbol)
+		id, found := proc.pieces[string(buf)]
+		if found {
+			return proc.model.GetPieces()[id].GetPiece(), id, true
+		}
+		return "", 0, false
+	}
 
 	// suggestNewMergePair is called to potentially add a new mergeCandidate to
 	// mergeQueue. The candidate is added if it's valid, both its parts are
@@ -225,15 +245,16 @@ func (proc *Processor) Encode(text string) []Token {
 			return
 		}
 
-		mergedSymbol := symList[left].symbol + symList[right].symbol
-		if id, found := proc.pieces[mergedSymbol]; found {
-			mergeQueue.Insert(mergeCandidate{
-				left:   left,
-				right:  right,
-				length: len(mergedSymbol),
-				score:  proc.model.GetPieces()[id].GetScore(),
-			})
+		mergedSymbol, id, ok := mergeSymbols(symList[left], symList[right])
+		if !ok {
+			return
 		}
+		mergeQueue.Insert(mergeCandidate{
+			left:   left,
+			right:  right,
+			length: len(mergedSymbol),
+			score:  proc.model.GetPieces()[id].GetScore(),
+		})
 	}
 
 	// Seed the merge queue with all pairs of symbols from symList
@@ -241,7 +262,14 @@ func (proc *Processor) Encode(text string) []Token {
 		suggestNewMergePair(i-1, i)
 	}
 
+	candidateIsDead := func(candidate mergeCandidate) bool {
+		leftSymbol := symList[candidate.left].symbol
+		rightSymbol := symList[candidate.right].symbol
+		return leftSymbol == "" || rightSymbol == "" || len(leftSymbol)+len(rightSymbol) != candidate.length
+	}
+
 	// Main loop
+	mergeQueueDead := 0
 	for mergeQueue.Len() > 0 {
 		candidate := mergeQueue.PopMax()
 		leftSymbol := symList[candidate.left]
@@ -249,15 +277,26 @@ func (proc *Processor) Encode(text string) []Token {
 
 		// Make sure this candidate is not out of date. If one of its parts was
 		// already merged with another symbol, just skip this candidate.
-		if len(leftSymbol.symbol) == 0 ||
-			len(rightSymbol.symbol) == 0 ||
-			len(leftSymbol.symbol)+len(rightSymbol.symbol) != candidate.length {
+		if candidateIsDead(candidate) {
+			mergeQueueDead--
 			continue
+		}
+
+		// If there are lots more dead merge candidates than live ones, remove the dead.
+		// The factor of 3 was determined empirically.
+		if mergeQueueDead*3 > mergeQueue.Len() {
+			mergeQueue.RemoveFunc(candidateIsDead)
+			mergeQueueDead = 0
 		}
 
 		// Do the merge:
 		// 1. Merge the concatenation of leftSymbol and rightSymbol into leftSymbol
-		symList[candidate.left].symbol = leftSymbol.symbol + rightSymbol.symbol
+		mergedSymbol, _, ok := mergeSymbols(leftSymbol, rightSymbol)
+		if !ok {
+			panic("failed to merge symbols")
+		}
+		symList[candidate.left].symbol = mergedSymbol
+		nTokens--
 
 		// 2. Update prev/next pointers
 		symList[candidate.left].next = rightSymbol.next
@@ -268,6 +307,7 @@ func (proc *Processor) Encode(text string) []Token {
 		// 3. Mark the right element in the pair as outdated (it's been merged
 		//    into the left one).
 		symList[candidate.right].symbol = ""
+		mergeQueueDead++
 
 		// 4. Add merge suggestions for the newly merged symbol with its neighbors
 		suggestNewMergePair(leftSymbol.prev, candidate.left)
@@ -275,7 +315,7 @@ func (proc *Processor) Encode(text string) []Token {
 	}
 
 	// Collect the final list of tokens from the remaining elements of symList.
-	tokens := make([]Token, 0, len(symList))
+	tokens := make([]Token, 0, nTokens)
 	for i := 0; i >= 0; i = symList[i].next {
 		symbol := symList[i].symbol
 		id := proc.symbolToID(symbol)
@@ -307,10 +347,12 @@ func (proc *Processor) symbolMatch(text string) (int, bool) {
 	return rlen, false
 }
 
-const symbolBOS = "<bos>"
-const symbolEOS = "<eos>"
-const symbolUNK = "<unk>"
-const symbolPAD = "<pad>"
+const (
+	symbolBOS = "<bos>"
+	symbolEOS = "<eos>"
+	symbolUNK = "<unk>"
+	symbolPAD = "<pad>"
+)
 
 // symbolToID finds the right ID for the given textual symbol, or returns
 // proc.unknownID if the symbol is unknown.

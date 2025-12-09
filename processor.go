@@ -230,7 +230,13 @@ func (proc *Processor) Encode(text string) []Token {
 	// merge two strings together without allocations.
 	buf := make([]byte, proc.maxPieceLength)
 	findMerged := func(x, y symListElem) (string, int, bool) {
-		buf = buf[:len(x.symbol)+len(y.symbol)]
+		combinedLen := len(x.symbol) + len(y.symbol)
+		if combinedLen > cap(buf) {
+			// Combined symbol can't possibly exist in vocabulary
+			// since it's longer than the longest piece.
+			return "", 0, false
+		}
+		buf = buf[:combinedLen]
 		copy(buf, x.symbol)
 		copy(buf[len(x.symbol):], y.symbol)
 		if id, found := proc.pieces[string(buf)]; found {

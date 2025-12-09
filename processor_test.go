@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -239,5 +240,44 @@ func TestInfo(t *testing.T) {
 	}
 	if info.UnknownID != wantUNK {
 		t.Errorf("got %v, want %v", info.UnknownID, wantUNK)
+	}
+}
+
+// TestMergedSymbolExceedsMaxPieceLength tests that encoding doesn't panic
+// when BPE attempts to merge two symbols whose combined length exceeds
+// maxPieceLength. This was a bug where findMerged would panic with
+// "slice bounds out of range" when trying to reslice a buffer that was
+// allocated with maxPieceLength capacity.
+//
+// The bug is triggered by repeated em dashes (—) or ellipsis (…) characters
+// which, during BPE merging, can create adjacent intermediate symbols that
+// each are ~48 bytes. When findMerged tries to check if they can merge,
+// the combined length (96 bytes) exceeds maxPieceLength (93 bytes for Gemma).
+func TestMergedSymbolExceedsMaxPieceLength(t *testing.T) {
+	proc := createProcessor(t)
+
+	// These test cases previously caused a panic:
+	// panic: runtime error: slice bounds out of range [:96] with capacity 93
+	testCases := []string{
+		strings.Repeat("—", 32), // 32 em dashes (U+2014, 3 bytes each = 96 bytes)
+		strings.Repeat("…", 32), // 32 ellipses (U+2026, 3 bytes each = 96 bytes)
+		strings.Repeat("—", 64), // More em dashes
+		strings.Repeat("…", 64), // More ellipses
+	}
+
+	for _, text := range testCases {
+		t.Run(fmt.Sprintf("len=%d", len(text)), func(t *testing.T) {
+			// Should not panic
+			tokens := proc.Encode(text)
+			if len(tokens) == 0 {
+				t.Errorf("expected at least one token for input of length %d", len(text))
+			}
+
+			// Verify round-trip works
+			decoded := proc.DecodeTokens(tokens)
+			if decoded != text {
+				t.Errorf("round-trip failed: got %q, want %q", decoded, text)
+			}
+		})
 	}
 }

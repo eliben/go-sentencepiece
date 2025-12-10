@@ -245,14 +245,7 @@ func TestInfo(t *testing.T) {
 
 // TestMergedSymbolExceedsMaxPieceLength tests that encoding doesn't panic
 // when BPE attempts to merge two symbols whose combined length exceeds
-// maxPieceLength. This was a bug where findMerged would panic with
-// "slice bounds out of range" when trying to reslice a buffer that was
-// allocated with maxPieceLength capacity.
-//
-// The bug is triggered by repeated em dashes (—) or ellipsis (…) characters
-// which, during BPE merging, can create adjacent intermediate symbols that
-// each are ~48 bytes. When findMerged tries to check if they can merge,
-// the combined length (96 bytes) exceeds maxPieceLength (93 bytes for Gemma).
+// maxPieceLength. See https://github.com/eliben/go-sentencepiece/pull/8
 func TestMergedSymbolExceedsMaxPieceLength(t *testing.T) {
 	proc := createProcessor(t)
 

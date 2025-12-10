@@ -40,7 +40,7 @@ that describes a trained tokenizer model; it includes
 the complete learned vocabulary used for tokenization, as well as
 other configuration information.
 
-It is not part of this repository. Please fetch it from the
+It is not part of this repository. Please fetch `tokenizer.model` from the
 [official Gemma implementation repository](https://github.com/google/gemma_pytorch/tree/main/tokenizer).
 `NewProcessor*` constructors will expect to read this file.
 

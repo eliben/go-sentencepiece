@@ -45,7 +45,7 @@ jobs:
           make build
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v1
+        uses: actions/upload-pages-artifact@v4
         with:
           # Upload
           path: 'internal/cmd/wasm/assets'

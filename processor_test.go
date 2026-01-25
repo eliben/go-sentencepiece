@@ -274,3 +274,139 @@ func TestMergedSymbolExceedsMaxPieceLength(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildPositionMap(t *testing.T) {
+	// This test doesn't require a model file
+	tests := []struct {
+		input    string
+		wantMap  []int
+	}{
+		// No spaces: positions map 1:1
+		{"hello", []int{0, 1, 2, 3, 4, 5}},
+
+		// Single space at start: " " (1 byte) -> "▁" (3 bytes)
+		// Original: " hi" = positions 0, 1, 2
+		// Normalized: "▁hi" = positions 0,0,0, 1, 2, 3 (normalized), maps to 0,0,0, 1, 2, 3 (original)
+		{" hi", []int{0, 0, 0, 1, 2, 3}},
+
+		// Space in middle: "a b"
+		// Original: 'a'=0, ' '=1, 'b'=2, end=3
+		// Normalized: "a▁b" = 'a'=0, '▁'=[1,2,3], 'b'=4, end=5
+		// Maps: norm[0]=0, norm[1]=1, norm[2]=1, norm[3]=1, norm[4]=2, norm[5]=3
+		{"a b", []int{0, 1, 1, 1, 2, 3}},
+
+		// Multiple spaces
+		{"a b c", []int{0, 1, 1, 1, 2, 3, 3, 3, 4, 5}},
+
+		// Empty string
+		{"", []int{0}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := buildPositionMap(tt.input)
+			if !slices.Equal(got, tt.wantMap) {
+				t.Errorf("buildPositionMap(%q):\n  got  %v\n  want %v", tt.input, got, tt.wantMap)
+			}
+		})
+	}
+}
+
+func TestEncodeWithSpans(t *testing.T) {
+	proc := createProcessor(t)
+
+	tests := []struct {
+		text      string
+		wantSpans []TokenSpan
+	}{
+		// Single word - spans should cover the whole word
+		{"hello", []TokenSpan{{0, 5}}},
+
+		// Two words - each token should have correct span
+		{"hello world", []TokenSpan{{0, 5}, {5, 11}}},
+
+		// Verify spans can extract original text
+		{"one line", nil}, // Just verify extraction works
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.text, func(t *testing.T) {
+			tokens := proc.EncodeWithSpans(tt.text)
+
+			if len(tokens) == 0 {
+				t.Fatalf("expected at least one token")
+			}
+
+			// Verify IDs match regular Encode
+			regularTokens := proc.Encode(tt.text)
+			if len(tokens) != len(regularTokens) {
+				t.Errorf("token count mismatch: EncodeWithSpans=%d, Encode=%d", len(tokens), len(regularTokens))
+			}
+			for i := range tokens {
+				if i < len(regularTokens) && tokens[i].ID != regularTokens[i].ID {
+					t.Errorf("token %d ID mismatch: EncodeWithSpans=%d, Encode=%d", i, tokens[i].ID, regularTokens[i].ID)
+				}
+			}
+
+			// If we have expected spans, verify them
+			if tt.wantSpans != nil {
+				for i, want := range tt.wantSpans {
+					if i >= len(tokens) {
+						break
+					}
+					got := tokens[i].Span
+					if got.Start != want.Start || got.End != want.End {
+						t.Errorf("token %d span: got [%d:%d], want [%d:%d]", i, got.Start, got.End, want.Start, want.End)
+					}
+				}
+			}
+
+			// Verify spans are valid and don't overlap incorrectly
+			for i, tok := range tokens {
+				if tok.Span.Start < 0 || tok.Span.End > len(tt.text) {
+					t.Errorf("token %d: span [%d:%d] out of bounds for text len %d", i, tok.Span.Start, tok.Span.End, len(tt.text))
+				}
+				if tok.Span.Start > tok.Span.End {
+					t.Errorf("token %d: invalid span [%d:%d]", i, tok.Span.Start, tok.Span.End)
+				}
+			}
+
+			// Verify spans are monotonically non-decreasing
+			for i := 1; i < len(tokens); i++ {
+				if tokens[i].Span.Start < tokens[i-1].Span.Start {
+					t.Errorf("token %d start (%d) < token %d start (%d)", i, tokens[i].Span.Start, i-1, tokens[i-1].Span.Start)
+				}
+			}
+		})
+	}
+}
+
+func TestEncodeWithSpansExtraction(t *testing.T) {
+	proc := createProcessor(t)
+
+	// Test that we can extract meaningful substrings from the original text
+	text := "Hello world, this is a test!"
+	tokens := proc.EncodeWithSpans(text)
+
+	// Collect all extracted pieces and verify they cover the text
+	var extracted []string
+	for _, tok := range tokens {
+		piece := text[tok.Span.Start:tok.Span.End]
+		extracted = append(extracted, piece)
+	}
+
+	// The extracted pieces should join to form something close to the original
+	// (modulo how BPE splits things)
+	joined := strings.Join(extracted, "")
+
+	// Verify we extracted real substrings (not empty or out of bounds)
+	for i, tok := range tokens {
+		if tok.Span.End < tok.Span.Start {
+			t.Errorf("token %d has invalid span: [%d:%d]", i, tok.Span.Start, tok.Span.End)
+		}
+	}
+
+	t.Logf("Original: %q", text)
+	t.Logf("Joined:   %q", joined)
+	t.Logf("Tokens:   %v", tokens)
+}

@@ -357,6 +357,224 @@ func (proc *Processor) symbolMatch(text string) (int, bool) {
 	return rlen, false
 }
 
+// EncodeWithSpans tokenizes the input text and returns a list of TokenWithSpan,
+// where each token includes its byte span in the original (un-normalized) text.
+// This is useful for mapping tokens back to their positions in the source text.
+func (proc *Processor) EncodeWithSpans(text string) []TokenWithSpan {
+	// Build a mapping from normalized byte positions to original byte positions.
+	// The normalization replaces " " (1 byte) with "▁" (3 bytes), so we need
+	// to track how positions shift.
+	normalizedToOriginal := buildPositionMap(text)
+	normalizedText := normalize(text)
+
+	// We begin by having each symbol a single Unicode character (or a
+	// user-defined string), and will iteratively merge them into larger and
+	// larger symbols until we have the final list of tokens.
+	type symListElem struct {
+		prev, next int
+		noMerge    bool
+		symbol     string
+		// Byte positions in the original (un-normalized) text
+		startPos, endPos int
+	}
+	symList := make([]symListElem, 0, len(normalizedText))
+
+	normalizedPos := 0
+	for {
+		// Match the next symbol in normalizedText
+		slen, found := proc.symbolMatch(normalizedText)
+
+		// Map normalized positions back to original positions
+		origStart := normalizedToOriginal[normalizedPos]
+		origEnd := normalizedToOriginal[normalizedPos+slen]
+
+		// Append a list element for this symbol
+		sym := symListElem{
+			noMerge:  found,
+			symbol:   normalizedText[:slen],
+			prev:     len(symList) - 1,
+			next:     len(symList) + 1,
+			startPos: origStart,
+			endPos:   origEnd,
+		}
+		symList = append(symList, sym)
+
+		// Advance to the next symbol
+		normalizedText = normalizedText[slen:]
+		normalizedPos += slen
+		if len(normalizedText) == 0 {
+			break
+		}
+	}
+
+	if len(symList) == 0 {
+		return nil
+	}
+	symList[len(symList)-1].next = -1
+	nTokens := len(symList)
+
+	// Priority queue for merge candidates
+	type mergeCandidate struct {
+		left, right int
+		length      int
+		score       float32
+	}
+
+	mergeQueue := priorityqueue.New(len(symList), func(a, b mergeCandidate) int {
+		if a.score > b.score || (a.score == b.score && a.left < b.left) {
+			return 1
+		}
+		return -1
+	})
+
+	buf := make([]byte, proc.maxPieceLength)
+	findMerged := func(x, y symListElem) (string, int, bool) {
+		combinedLen := len(x.symbol) + len(y.symbol)
+		if combinedLen > cap(buf) {
+			return "", 0, false
+		}
+		buf = buf[:combinedLen]
+		copy(buf, x.symbol)
+		copy(buf[len(x.symbol):], y.symbol)
+		if id, found := proc.pieces[string(buf)]; found {
+			return proc.model.GetPieces()[id].GetPiece(), id, true
+		}
+		return "", 0, false
+	}
+
+	suggestNewMergePair := func(left, right int) {
+		if left == -1 || right == -1 || symList[left].noMerge || symList[right].noMerge {
+			return
+		}
+		if mergedSymbol, id, ok := findMerged(symList[left], symList[right]); ok {
+			mergeQueue.Insert(mergeCandidate{
+				left:   left,
+				right:  right,
+				length: len(mergedSymbol),
+				score:  proc.model.GetPieces()[id].GetScore(),
+			})
+		}
+	}
+
+	// Seed the merge queue
+	for i := 1; i < len(symList); i++ {
+		suggestNewMergePair(i-1, i)
+	}
+
+	candidateIsDead := func(candidate mergeCandidate) bool {
+		leftSymbol := symList[candidate.left].symbol
+		rightSymbol := symList[candidate.right].symbol
+		return leftSymbol == "" || rightSymbol == "" || len(leftSymbol)+len(rightSymbol) != candidate.length
+	}
+
+	// Main merge loop
+	mergeQueueDead := 0
+	for mergeQueue.Len() > 0 {
+		candidate := mergeQueue.PopMax()
+		leftSymbol := symList[candidate.left]
+		rightSymbol := symList[candidate.right]
+
+		if candidateIsDead(candidate) {
+			mergeQueueDead--
+			continue
+		}
+
+		if mergeQueueDead*3 > mergeQueue.Len() {
+			mergeQueue.RemoveFunc(candidateIsDead)
+			mergeQueueDead = 0
+		}
+
+		// Do the merge
+		mergedSymbol, _, ok := findMerged(leftSymbol, rightSymbol)
+		if !ok {
+			panic("failed to merge symbols")
+		}
+		symList[candidate.left].symbol = mergedSymbol
+		// The merged span extends from left's start to right's end
+		symList[candidate.left].endPos = rightSymbol.endPos
+		nTokens--
+
+		// Update prev/next pointers
+		symList[candidate.left].next = rightSymbol.next
+		if rightSymbol.next >= 0 {
+			symList[rightSymbol.next].prev = candidate.left
+		}
+
+		// Mark right element as dead
+		symList[candidate.right].symbol = ""
+		mergeQueueDead++
+
+		// Add new merge suggestions
+		suggestNewMergePair(leftSymbol.prev, candidate.left)
+		suggestNewMergePair(candidate.left, rightSymbol.next)
+	}
+
+	// Collect final tokens with spans
+	tokens := make([]TokenWithSpan, 0, nTokens)
+	for i := 0; i >= 0; i = symList[i].next {
+		elem := symList[i]
+		symbol := elem.symbol
+		id := proc.symbolToID(symbol)
+
+		if id == proc.unknownID && proc.model.GetTrainerSpec().GetByteFallback() {
+			// Decompose into bytes, distributing the span across them
+			symbolBytes := []byte(symbol)
+			spanLen := elem.endPos - elem.startPos
+			for bi := 0; bi < len(symbolBytes); bi++ {
+				// Distribute the original span proportionally across bytes
+				byteStart := elem.startPos + (bi * spanLen / len(symbolBytes))
+				byteEnd := elem.startPos + ((bi + 1) * spanLen / len(symbolBytes))
+				tok := proc.byte2Token[symbolBytes[bi]]
+				tokens = append(tokens, TokenWithSpan{
+					Token: tok,
+					Span:  TokenSpan{Start: byteStart, End: byteEnd},
+				})
+			}
+		} else {
+			tokens = append(tokens, TokenWithSpan{
+				Token: Token{ID: id, Text: symbol},
+				Span:  TokenSpan{Start: elem.startPos, End: elem.endPos},
+			})
+		}
+	}
+
+	return tokens
+}
+
+// buildPositionMap creates a mapping from normalized byte positions to original
+// byte positions. The normalization replaces " " (1 byte) with "▁" (3 bytes).
+// Returns a slice where normalizedToOriginal[i] is the original byte position
+// corresponding to normalized byte position i.
+func buildPositionMap(original string) []int {
+	// Count how many spaces to determine final normalized length
+	spaceCount := strings.Count(original, " ")
+	// Each space adds 2 extra bytes (1 byte " " becomes 3 byte "▁")
+	normalizedLen := len(original) + spaceCount*2
+
+	mapping := make([]int, normalizedLen+1)
+
+	origPos := 0
+	normPos := 0
+	for origPos < len(original) {
+		if original[origPos] == ' ' {
+			// Space becomes 3-byte "▁", all 3 normalized bytes map to original space position
+			mapping[normPos] = origPos
+			mapping[normPos+1] = origPos
+			mapping[normPos+2] = origPos
+			normPos += 3
+			origPos++
+		} else {
+			mapping[normPos] = origPos
+			normPos++
+			origPos++
+		}
+	}
+	// Final position (for end-of-span calculations)
+	mapping[normPos] = origPos
+
+	return mapping
+}
+
 const (
 	symbolBOS = "<bos>"
 	symbolEOS = "<eos>"

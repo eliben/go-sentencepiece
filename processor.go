@@ -147,29 +147,38 @@ func NewProcessor(protoReader io.Reader) (*Processor, error) {
 	}, nil
 }
 
-// Encode tokenizes the input text and returns a list of Tokens.
-func (proc *Processor) Encode(text string) []Token {
+// symListElem represents an element in the symbol list used during BPE encoding.
+// The list is represented as a doubly-linked list where prev/next link to
+// "live" symbols. After merging, many elements become "dead" (unreachable).
+type symListElem struct {
+	prev, next int
+	noMerge    bool
+	symbol     string
+	// Byte positions in normalized text; used for span tracking.
+	// These are always maintained but only used by EncodeWithSpans.
+	normStart, normEnd int
+}
+
+// mergeCandidate represents a potential merge of two adjacent symbols.
+type mergeCandidate struct {
+	left, right int
+	length      int
+	score       float32
+}
+
+// encodeToSymList performs BPE encoding and returns the final merged symbol list.
+// This is the core encoding algorithm shared by Encode and EncodeWithSpans.
+func (proc *Processor) encodeToSymList(text string) []symListElem {
 	text = normalize(text)
 
 	// We begin by having each symbol a single Unicode character (or a
 	// user-defined string), and will iteratively merge them into larger and
 	// larger symbols until we have the final list of tokens.
-	// Since this list of symbols changes a lot, we represent it as a
-	// doubly-linked list in the symList slice. Each element in this slice has
-	// prev/next links to the next "live" symbol in the list; noMerge means this
-	// is a user-defined symbol we're not allowed to merge with neighbors.
-	// After the algorithm is finished, many elements in symList will be "dead"
-	// (unreachable by next/prev links from the first element).
 	// This representation is inspired by the implementation of bpe::Model
 	// in the SentencePiece C++ library.
-
-	type symListElem struct {
-		prev, next int
-		noMerge    bool
-		symbol     string
-	}
 	symList := make([]symListElem, 0, len(text))
 
+	pos := 0
 	for {
 		// Match the next symbol in text
 		slen, found := proc.symbolMatch(text)
@@ -177,15 +186,18 @@ func (proc *Processor) Encode(text string) []Token {
 		// Append a list element for this symbol; note that this element will be
 		// at index len(symList), so prev/next are set up accordingly.
 		sym := symListElem{
-			noMerge: found,
-			symbol:  text[:slen],
-			prev:    len(symList) - 1,
-			next:    len(symList) + 1,
+			noMerge:   found,
+			symbol:    text[:slen],
+			prev:      len(symList) - 1,
+			next:      len(symList) + 1,
+			normStart: pos,
+			normEnd:   pos + slen,
 		}
 		symList = append(symList, sym)
 
 		// Advance the text slice to the next symbol; if no more text, we're done.
 		text = text[slen:]
+		pos += slen
 		if len(text) == 0 {
 			break
 		}
@@ -195,7 +207,6 @@ func (proc *Processor) Encode(text string) []Token {
 		return nil
 	}
 	symList[len(symList)-1].next = -1
-	nTokens := len(symList)
 
 	debugShowSymList := func(prefix string) {
 		if debugEncode {
@@ -212,12 +223,6 @@ func (proc *Processor) Encode(text string) []Token {
 	// symbol in the pair, as well as the combined symbol's score.
 	// The priority of merging is determined by this score, with position as
 	// the tie-breaker (earlier pairs are preferred).
-	type mergeCandidate struct {
-		left, right int
-		length      int
-		score       float32
-	}
-
 	mergeQueue := priorityqueue.New(len(symList), func(a, b mergeCandidate) int {
 		if a.score > b.score || (a.score == b.score && a.left < b.left) {
 			return 1
@@ -306,7 +311,8 @@ func (proc *Processor) Encode(text string) []Token {
 			panic("failed to merge symbols")
 		}
 		symList[candidate.left].symbol = mergedSymbol
-		nTokens--
+		// Extend the span to cover both symbols
+		symList[candidate.left].normEnd = rightSymbol.normEnd
 
 		// 2. Update prev/next pointers
 		symList[candidate.left].next = rightSymbol.next
@@ -324,6 +330,22 @@ func (proc *Processor) Encode(text string) []Token {
 		suggestNewMergePair(candidate.left, rightSymbol.next)
 	}
 
+	return symList
+}
+
+// Encode tokenizes the input text and returns a list of Tokens.
+func (proc *Processor) Encode(text string) []Token {
+	symList := proc.encodeToSymList(text)
+	if symList == nil {
+		return nil
+	}
+
+	// Count tokens for capacity hint
+	nTokens := 0
+	for i := 0; i >= 0; i = symList[i].next {
+		nTokens++
+	}
+
 	// Collect the final list of tokens from the remaining elements of symList.
 	tokens := make([]Token, 0, nTokens)
 	for i := 0; i >= 0; i = symList[i].next {
@@ -333,8 +355,8 @@ func (proc *Processor) Encode(text string) []Token {
 		if id == proc.unknownID && proc.model.GetTrainerSpec().GetByteFallback() {
 			// Decompose this symbol into bytes, and report each byte as a separate
 			// token.
-			for i := 0; i < len(symbol); i++ {
-				tokens = append(tokens, proc.byte2Token[symbol[i]])
+			for j := 0; j < len(symbol); j++ {
+				tokens = append(tokens, proc.byte2Token[symbol[j]])
 			}
 		} else {
 			tokens = append(tokens, Token{ID: id, Text: symbol})
@@ -365,165 +387,37 @@ func (proc *Processor) EncodeWithSpans(text string) []TokenWithSpan {
 	// The normalization replaces " " (1 byte) with "▁" (3 bytes), so we need
 	// to track how positions shift.
 	normalizedToOriginal := buildPositionMap(text)
-	normalizedText := normalize(text)
 
-	// We begin by having each symbol a single Unicode character (or a
-	// user-defined string), and will iteratively merge them into larger and
-	// larger symbols until we have the final list of tokens.
-	type symListElem struct {
-		prev, next int
-		noMerge    bool
-		symbol     string
-		// Byte positions in the original (un-normalized) text
-		startPos, endPos int
-	}
-	symList := make([]symListElem, 0, len(normalizedText))
-
-	normalizedPos := 0
-	for {
-		// Match the next symbol in normalizedText
-		slen, found := proc.symbolMatch(normalizedText)
-
-		// Map normalized positions back to original positions
-		origStart := normalizedToOriginal[normalizedPos]
-		origEnd := normalizedToOriginal[normalizedPos+slen]
-
-		// Append a list element for this symbol
-		sym := symListElem{
-			noMerge:  found,
-			symbol:   normalizedText[:slen],
-			prev:     len(symList) - 1,
-			next:     len(symList) + 1,
-			startPos: origStart,
-			endPos:   origEnd,
-		}
-		symList = append(symList, sym)
-
-		// Advance to the next symbol
-		normalizedText = normalizedText[slen:]
-		normalizedPos += slen
-		if len(normalizedText) == 0 {
-			break
-		}
-	}
-
-	if len(symList) == 0 {
+	symList := proc.encodeToSymList(text)
+	if symList == nil {
 		return nil
 	}
-	symList[len(symList)-1].next = -1
-	nTokens := len(symList)
 
-	// Priority queue for merge candidates
-	type mergeCandidate struct {
-		left, right int
-		length      int
-		score       float32
+	// Count tokens for capacity hint
+	nTokens := 0
+	for i := 0; i >= 0; i = symList[i].next {
+		nTokens++
 	}
 
-	mergeQueue := priorityqueue.New(len(symList), func(a, b mergeCandidate) int {
-		if a.score > b.score || (a.score == b.score && a.left < b.left) {
-			return 1
-		}
-		return -1
-	})
-
-	buf := make([]byte, proc.maxPieceLength)
-	findMerged := func(x, y symListElem) (string, int, bool) {
-		combinedLen := len(x.symbol) + len(y.symbol)
-		if combinedLen > cap(buf) {
-			return "", 0, false
-		}
-		buf = buf[:combinedLen]
-		copy(buf, x.symbol)
-		copy(buf[len(x.symbol):], y.symbol)
-		if id, found := proc.pieces[string(buf)]; found {
-			return proc.model.GetPieces()[id].GetPiece(), id, true
-		}
-		return "", 0, false
-	}
-
-	suggestNewMergePair := func(left, right int) {
-		if left == -1 || right == -1 || symList[left].noMerge || symList[right].noMerge {
-			return
-		}
-		if mergedSymbol, id, ok := findMerged(symList[left], symList[right]); ok {
-			mergeQueue.Insert(mergeCandidate{
-				left:   left,
-				right:  right,
-				length: len(mergedSymbol),
-				score:  proc.model.GetPieces()[id].GetScore(),
-			})
-		}
-	}
-
-	// Seed the merge queue
-	for i := 1; i < len(symList); i++ {
-		suggestNewMergePair(i-1, i)
-	}
-
-	candidateIsDead := func(candidate mergeCandidate) bool {
-		leftSymbol := symList[candidate.left].symbol
-		rightSymbol := symList[candidate.right].symbol
-		return leftSymbol == "" || rightSymbol == "" || len(leftSymbol)+len(rightSymbol) != candidate.length
-	}
-
-	// Main merge loop
-	mergeQueueDead := 0
-	for mergeQueue.Len() > 0 {
-		candidate := mergeQueue.PopMax()
-		leftSymbol := symList[candidate.left]
-		rightSymbol := symList[candidate.right]
-
-		if candidateIsDead(candidate) {
-			mergeQueueDead--
-			continue
-		}
-
-		if mergeQueueDead*3 > mergeQueue.Len() {
-			mergeQueue.RemoveFunc(candidateIsDead)
-			mergeQueueDead = 0
-		}
-
-		// Do the merge
-		mergedSymbol, _, ok := findMerged(leftSymbol, rightSymbol)
-		if !ok {
-			panic("failed to merge symbols")
-		}
-		symList[candidate.left].symbol = mergedSymbol
-		// The merged span extends from left's start to right's end
-		symList[candidate.left].endPos = rightSymbol.endPos
-		nTokens--
-
-		// Update prev/next pointers
-		symList[candidate.left].next = rightSymbol.next
-		if rightSymbol.next >= 0 {
-			symList[rightSymbol.next].prev = candidate.left
-		}
-
-		// Mark right element as dead
-		symList[candidate.right].symbol = ""
-		mergeQueueDead++
-
-		// Add new merge suggestions
-		suggestNewMergePair(leftSymbol.prev, candidate.left)
-		suggestNewMergePair(candidate.left, rightSymbol.next)
-	}
-
-	// Collect final tokens with spans
+	// Collect final tokens with spans, converting normalized positions to original
 	tokens := make([]TokenWithSpan, 0, nTokens)
 	for i := 0; i >= 0; i = symList[i].next {
 		elem := symList[i]
 		symbol := elem.symbol
 		id := proc.symbolToID(symbol)
 
+		// Convert normalized positions to original positions
+		origStart := normalizedToOriginal[elem.normStart]
+		origEnd := normalizedToOriginal[elem.normEnd]
+
 		if id == proc.unknownID && proc.model.GetTrainerSpec().GetByteFallback() {
 			// Decompose into bytes, distributing the span across them
 			symbolBytes := []byte(symbol)
-			spanLen := elem.endPos - elem.startPos
-			for bi := 0; bi < len(symbolBytes); bi++ {
+			spanLen := origEnd - origStart
+			for bi := range symbolBytes {
 				// Distribute the original span proportionally across bytes
-				byteStart := elem.startPos + (bi * spanLen / len(symbolBytes))
-				byteEnd := elem.startPos + ((bi + 1) * spanLen / len(symbolBytes))
+				byteStart := origStart + (bi * spanLen / len(symbolBytes))
+				byteEnd := origStart + ((bi + 1) * spanLen / len(symbolBytes))
 				tok := proc.byte2Token[symbolBytes[bi]]
 				tokens = append(tokens, TokenWithSpan{
 					Token: tok,
@@ -533,7 +427,7 @@ func (proc *Processor) EncodeWithSpans(text string) []TokenWithSpan {
 		} else {
 			tokens = append(tokens, TokenWithSpan{
 				Token: Token{ID: id, Text: symbol},
-				Span:  TokenSpan{Start: elem.startPos, End: elem.endPos},
+				Span:  TokenSpan{Start: origStart, End: origEnd},
 			})
 		}
 	}

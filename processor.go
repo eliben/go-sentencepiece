@@ -147,29 +147,38 @@ func NewProcessor(protoReader io.Reader) (*Processor, error) {
 	}, nil
 }
 
-// Encode tokenizes the input text and returns a list of Tokens.
-func (proc *Processor) Encode(text string) []Token {
+// symListElem represents an element in the symbol list used during BPE encoding.
+// The list is represented as a doubly-linked list where prev/next link to
+// "live" symbols. After merging, many elements become "dead" (unreachable).
+type symListElem struct {
+	prev, next int
+	noMerge    bool
+	symbol     string
+	// Byte positions in normalized text; used for span tracking.
+	// These are always maintained but only used by EncodeWithSpans.
+	normStart, normEnd int
+}
+
+// mergeCandidate represents a potential merge of two adjacent symbols.
+type mergeCandidate struct {
+	left, right int
+	length      int
+	score       float32
+}
+
+// encodeToSymList performs BPE encoding and returns the final merged symbol list.
+// This is the core encoding algorithm shared by Encode and EncodeWithSpans.
+func (proc *Processor) encodeToSymList(text string) []symListElem {
 	text = normalize(text)
 
 	// We begin by having each symbol a single Unicode character (or a
 	// user-defined string), and will iteratively merge them into larger and
 	// larger symbols until we have the final list of tokens.
-	// Since this list of symbols changes a lot, we represent it as a
-	// doubly-linked list in the symList slice. Each element in this slice has
-	// prev/next links to the next "live" symbol in the list; noMerge means this
-	// is a user-defined symbol we're not allowed to merge with neighbors.
-	// After the algorithm is finished, many elements in symList will be "dead"
-	// (unreachable by next/prev links from the first element).
 	// This representation is inspired by the implementation of bpe::Model
 	// in the SentencePiece C++ library.
-
-	type symListElem struct {
-		prev, next int
-		noMerge    bool
-		symbol     string
-	}
 	symList := make([]symListElem, 0, len(text))
 
+	pos := 0
 	for {
 		// Match the next symbol in text
 		slen, found := proc.symbolMatch(text)
@@ -177,15 +186,18 @@ func (proc *Processor) Encode(text string) []Token {
 		// Append a list element for this symbol; note that this element will be
 		// at index len(symList), so prev/next are set up accordingly.
 		sym := symListElem{
-			noMerge: found,
-			symbol:  text[:slen],
-			prev:    len(symList) - 1,
-			next:    len(symList) + 1,
+			noMerge:   found,
+			symbol:    text[:slen],
+			prev:      len(symList) - 1,
+			next:      len(symList) + 1,
+			normStart: pos,
+			normEnd:   pos + slen,
 		}
 		symList = append(symList, sym)
 
 		// Advance the text slice to the next symbol; if no more text, we're done.
 		text = text[slen:]
+		pos += slen
 		if len(text) == 0 {
 			break
 		}
@@ -195,7 +207,6 @@ func (proc *Processor) Encode(text string) []Token {
 		return nil
 	}
 	symList[len(symList)-1].next = -1
-	nTokens := len(symList)
 
 	debugShowSymList := func(prefix string) {
 		if debugEncode {
@@ -212,12 +223,6 @@ func (proc *Processor) Encode(text string) []Token {
 	// symbol in the pair, as well as the combined symbol's score.
 	// The priority of merging is determined by this score, with position as
 	// the tie-breaker (earlier pairs are preferred).
-	type mergeCandidate struct {
-		left, right int
-		length      int
-		score       float32
-	}
-
 	mergeQueue := priorityqueue.New(len(symList), func(a, b mergeCandidate) int {
 		if a.score > b.score || (a.score == b.score && a.left < b.left) {
 			return 1
@@ -306,7 +311,8 @@ func (proc *Processor) Encode(text string) []Token {
 			panic("failed to merge symbols")
 		}
 		symList[candidate.left].symbol = mergedSymbol
-		nTokens--
+		// Extend the span to cover both symbols
+		symList[candidate.left].normEnd = rightSymbol.normEnd
 
 		// 2. Update prev/next pointers
 		symList[candidate.left].next = rightSymbol.next
@@ -324,6 +330,22 @@ func (proc *Processor) Encode(text string) []Token {
 		suggestNewMergePair(candidate.left, rightSymbol.next)
 	}
 
+	return symList
+}
+
+// Encode tokenizes the input text and returns a list of Tokens.
+func (proc *Processor) Encode(text string) []Token {
+	symList := proc.encodeToSymList(text)
+	if symList == nil {
+		return nil
+	}
+
+	// Count tokens for capacity hint
+	nTokens := 0
+	for i := 0; i >= 0; i = symList[i].next {
+		nTokens++
+	}
+
 	// Collect the final list of tokens from the remaining elements of symList.
 	tokens := make([]Token, 0, nTokens)
 	for i := 0; i >= 0; i = symList[i].next {
@@ -333,8 +355,8 @@ func (proc *Processor) Encode(text string) []Token {
 		if id == proc.unknownID && proc.model.GetTrainerSpec().GetByteFallback() {
 			// Decompose this symbol into bytes, and report each byte as a separate
 			// token.
-			for i := 0; i < len(symbol); i++ {
-				tokens = append(tokens, proc.byte2Token[symbol[i]])
+			for j := 0; j < len(symbol); j++ {
+				tokens = append(tokens, proc.byte2Token[symbol[j]])
 			}
 		} else {
 			tokens = append(tokens, Token{ID: id, Text: symbol})
@@ -355,6 +377,96 @@ func (proc *Processor) symbolMatch(text string) (int, bool) {
 	// Not found a user-defined prefix; get the length of next rune.
 	_, rlen := utf8.DecodeRuneInString(text)
 	return rlen, false
+}
+
+// EncodeWithSpans tokenizes the input text and returns a list of TokenWithSpan,
+// where each token includes its byte span in the original (un-normalized) text.
+// This is useful for mapping tokens back to their positions in the source text.
+func (proc *Processor) EncodeWithSpans(text string) []TokenWithSpan {
+	// Build a mapping from normalized byte positions to original byte positions.
+	// The normalization replaces " " (1 byte) with "▁" (3 bytes), so we need
+	// to track how positions shift.
+	normalizedToOriginal := buildPositionMap(text)
+
+	symList := proc.encodeToSymList(text)
+	if symList == nil {
+		return nil
+	}
+
+	// Count tokens for capacity hint
+	nTokens := 0
+	for i := 0; i >= 0; i = symList[i].next {
+		nTokens++
+	}
+
+	// Collect final tokens with spans, converting normalized positions to original
+	tokens := make([]TokenWithSpan, 0, nTokens)
+	for i := 0; i >= 0; i = symList[i].next {
+		elem := symList[i]
+		symbol := elem.symbol
+		id := proc.symbolToID(symbol)
+
+		// Convert normalized positions to original positions
+		origStart := normalizedToOriginal[elem.normStart]
+		origEnd := normalizedToOriginal[elem.normEnd]
+
+		if id == proc.unknownID && proc.model.GetTrainerSpec().GetByteFallback() {
+			// Decompose into bytes, distributing the span across them
+			symbolBytes := []byte(symbol)
+			spanLen := origEnd - origStart
+			for bi := range symbolBytes {
+				// Distribute the original span proportionally across bytes
+				byteStart := origStart + (bi * spanLen / len(symbolBytes))
+				byteEnd := origStart + ((bi + 1) * spanLen / len(symbolBytes))
+				tok := proc.byte2Token[symbolBytes[bi]]
+				tokens = append(tokens, TokenWithSpan{
+					Token: tok,
+					Span:  TokenSpan{Start: byteStart, End: byteEnd},
+				})
+			}
+		} else {
+			tokens = append(tokens, TokenWithSpan{
+				Token: Token{ID: id, Text: symbol},
+				Span:  TokenSpan{Start: origStart, End: origEnd},
+			})
+		}
+	}
+
+	return tokens
+}
+
+// buildPositionMap creates a mapping from normalized byte positions to original
+// byte positions. The normalization replaces " " (1 byte) with "▁" (3 bytes).
+// Returns a slice where normalizedToOriginal[i] is the original byte position
+// corresponding to normalized byte position i.
+func buildPositionMap(original string) []int {
+	// Count how many spaces to determine final normalized length
+	spaceCount := strings.Count(original, " ")
+	// Each space adds 2 extra bytes (1 byte " " becomes 3 byte "▁")
+	normalizedLen := len(original) + spaceCount*2
+
+	mapping := make([]int, normalizedLen+1)
+
+	origPos := 0
+	normPos := 0
+	for origPos < len(original) {
+		if original[origPos] == ' ' {
+			// Space becomes 3-byte "▁", all 3 normalized bytes map to original space position
+			mapping[normPos] = origPos
+			mapping[normPos+1] = origPos
+			mapping[normPos+2] = origPos
+			normPos += 3
+			origPos++
+		} else {
+			mapping[normPos] = origPos
+			normPos++
+			origPos++
+		}
+	}
+	// Final position (for end-of-span calculations)
+	mapping[normPos] = origPos
+
+	return mapping
 }
 
 const (

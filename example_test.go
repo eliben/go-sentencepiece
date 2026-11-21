@@ -8,7 +8,7 @@ import (
 	"github.com/eliben/go-sentencepiece"
 )
 
-func ExampleEncode() {
+func ExampleProcessor_Encode() {
 	protoFile := os.Getenv("MODELPATH")
 	if protoFile == "" {
 		log.Println("Need MODELPATH env var to run example")
@@ -28,7 +28,7 @@ func ExampleEncode() {
 	}
 }
 
-func ExampleDecode() {
+func ExampleProcessor_Decode() {
 	protoFile := os.Getenv("MODELPATH")
 	if protoFile == "" {
 		log.Println("Need MODELPATH env var to run example")
